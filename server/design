@@ -1,11 +1,11 @@
 Server:
     Manage a list of clients connected
     emit a signal when there is a client connected or disconnected
-    emit message sent by the client
+    (Done) emit message sent by the client
     send a message to a client
     broadcast a message to the clients
 Message:
-    Pack and unpack message
+    (Done) Pack and unpack message
     Unified message structure
     Checksum
     Kind of message
@@ -15,7 +15,7 @@ GUI:
     Have views to control the sensors, motors
     Views to display sensors states
 Command Line Interface:
-    Print messages of TCP events
+    (Done) Print messages of TCP events
     Print sensor data
     Print sensor states
     Prompt for commands
