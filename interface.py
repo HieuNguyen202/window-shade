@@ -29,8 +29,12 @@ class RobotServer(QObject):
         print('interface.py: The server is running on', ipAddress, 'port', self.tcpServer.serverPort())
 
     def analyzeNewMessage(self, messages):
-        for i in range(0, len(messages), len(self.struct.format)):
-            message = messages.mid(i, len(self.struct.format))
+        length = len(self.struct.format)
+        for i in range(0, len(messages), length):
+            message = messages.mid(i, length)
+            if len(message) < length:
+                print("Message is too short: ", message)
+                return
             decodedMessage = self.struct.unpack(message)
             if sum(decodedMessage)%256 == 0: #checksum valid
                 self.newMessage.emit(decodedMessage)
@@ -38,7 +42,7 @@ class RobotServer(QObject):
                 print("interface.py: TCP server checksum failed:", decodedMessage)
 
     def readNewMessage(self):
-        messages = self.controller.readAll()
+        messages = self.clients[0].readAll()
         self.analyzeNewMessage(messages=messages)
 
     def acceptConnection(self):
