@@ -1,6 +1,7 @@
 from PyQt5.QtNetwork import QHostAddress, QTcpServer, QTcpSocket, QNetworkInterface, QAbstractSocket
 from PyQt5.QtCore import QObject, pyqtSignal
 import struct
+MESSAGE_LENGTH = 5  #Including checksum
 
 def getIPAddress():
     for ipAddress in QNetworkInterface.allAddresses():
@@ -28,22 +29,26 @@ class RobotServer(QObject):
         ipAddress = getIPAddress()
         print('interface.py: The server is running on', ipAddress, 'port', self.tcpServer.serverPort())
 
-    def analyzeNewMessage(self, messages):
-        length = len(self.struct.format)
-        for i in range(0, len(messages), length):
-            message = messages.mid(i, length)
-            if len(message) < length:
+    def analyzeNewMessage(self, raw):
+        tempLen = len(self.struct.format)
+        for i in range(0, len(raw), tempLen):
+            message = raw[i:i+tempLen]
+            if len(message) < tempLen:
                 print("Message is too short: ", message)
                 return
             decodedMessage = self.struct.unpack(message)
+            print(decodedMessage)
+
             if sum(decodedMessage)%256 == 0: #checksum valid
                 self.newMessage.emit(decodedMessage)
             else:
                 print("interface.py: TCP server checksum failed:", decodedMessage)
 
     def readNewMessage(self):
-        messages = self.clients[0].readAll()
-        self.analyzeNewMessage(messages=messages)
+        bytesAvail = self.clients[0].bytesAvailable()
+        if bytesAvail >= MESSAGE_LENGTH:
+            messages = self.clients[0].read((bytesAvail//MESSAGE_LENGTH)*MESSAGE_LENGTH)
+            self.analyzeNewMessage(raw=messages)
 
     def acceptConnection(self):
         newClient = self.tcpServer.nextPendingConnection()
