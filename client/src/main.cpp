@@ -3,10 +3,10 @@
 int count  = 0;
 const char* ssid = "Mars";
 const char* password = "3941HIEU";
-IPAddress server(192,168,0,21);
+IPAddress server(192,168,0,19);
 WiFiClient client;
-void setup() {
-  Serial.begin(9600);
+
+void setupWiFi(){
   WiFi.begin(ssid, password);
   while(WiFi.status()!=WL_CONNECTED){
     delay(500);
@@ -24,10 +24,16 @@ void setup() {
   } else {
     Serial.println("Failed to connect to server!");
   }
-  
+}
+
+void setup() {
+  Serial.begin(9600);
 }
 
 void loop() {
+  Serial.println(analogRead(ADC_0db)); //pin ADC7
+  delay(100);
+
   // Serial.println(count);
   // count++;
   // put your main code here, to run repeatedly:
