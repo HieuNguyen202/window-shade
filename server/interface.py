@@ -45,10 +45,13 @@ class RobotServer(QObject):
                 print("interface.py: TCP server checksum failed:", decodedMessage)
 
     def readNewMessage(self):
-        bytesAvail = self.clients[0].bytesAvailable()
-        if bytesAvail >= MESSAGE_LENGTH:
-            messages = self.clients[0].read((bytesAvail//MESSAGE_LENGTH)*MESSAGE_LENGTH)
-            self.analyzeNewMessage(raw=messages)
+        while self.clients[0].bytesAvailable() > 0:
+            print(self.clients[0].readLine(100))
+
+        # bytesAvail = self.clients[0].bytesAvailable()
+        # if bytesAvail >= MESSAGE_LENGTH:
+        #     messages = self.clients[0].readLine((bytesAvail//MESSAGE_LENGTH)*MESSAGE_LENGTH)
+        #     self.analyzeNewMessage(raw=messages)
 
     def acceptConnection(self):
         newClient = self.tcpServer.nextPendingConnection()
