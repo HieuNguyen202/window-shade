@@ -59,6 +59,7 @@ void loop() {
         Serial.printf("New message received: [%d, %d, %d, %d]!", dataIn[0], dataIn[1], dataIn[2], dataIn[3], dataIn[4]);
       }
     }
+
     //Send message
     dataOut[0] = 2;
     dataOut[1] = 1;
@@ -67,16 +68,17 @@ void loop() {
     dataOut[MESSAGE_LENGTH] = 0;
 
     checksum(dataOut, MESSAGE_LENGTH);
-    client.write(dataOut);
+    // client.write(dataOut);
+    client.print("m");
+    client.print(1234);
+    //m1234
+
   } else{                                           //Connection failed
     Serial.printf("Wifi connection failed with status %d.\n", WiFi.status());
   }
-  // Serial.println("Looping...");
-  delay(100);
+  // delay(100);
   // Serial.println(analogRead(ADC_0db)); //pin ADC7
   // delay(100);
 
-  // Serial.println(count);
-  // count++;
-  // put your main code here, to run repeatedly:
+
 }

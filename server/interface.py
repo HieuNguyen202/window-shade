@@ -14,11 +14,10 @@ def getIPAddress():
 class RobotServer(QObject):
     controllerDisconnected = pyqtSignal()
     newConnection = pyqtSignal(QTcpSocket)
-    newMessage = pyqtSignal(tuple)
+    newMessage = pyqtSignal(bytes)
 
-    def __init__(self, format = "BBBBB"):
+    def __init__(self):
         super(RobotServer, self).__init__()
-        self.struct = struct.Struct(format)
         self.tcpServer = QTcpServer()
         self.tcpServer.newConnection.connect(self.acceptConnection)
         self.tcpServer.acceptError.connect(self.acceptError)
@@ -29,29 +28,10 @@ class RobotServer(QObject):
         ipAddress = getIPAddress()
         print('interface.py: The server is running on', ipAddress, 'port', self.tcpServer.serverPort())
 
-    def analyzeNewMessage(self, raw):
-        tempLen = len(self.struct.format)
-        for i in range(0, len(raw), tempLen):
-            message = raw[i:i+tempLen]
-            if len(message) < tempLen:
-                print("Message is too short: ", message)
-                return
-            decodedMessage = self.struct.unpack(message)
-            print(decodedMessage)
-
-            if sum(decodedMessage)%256 == 0: #checksum valid
-                self.newMessage.emit(decodedMessage)
-            else:
-                print("interface.py: TCP server checksum failed:", decodedMessage)
-
     def readNewMessage(self):
-        while self.clients[0].bytesAvailable() > 0:
-            print(self.clients[0].readLine(100))
-
-        # bytesAvail = self.clients[0].bytesAvailable()
-        # if bytesAvail >= MESSAGE_LENGTH:
-        #     messages = self.clients[0].readLine((bytesAvail//MESSAGE_LENGTH)*MESSAGE_LENGTH)
-        #     self.analyzeNewMessage(raw=messages)
+        while self.clients[0].bytesAvailable() >= MESSAGE_LENGTH:
+            message = self.clients[0].read(MESSAGE_LENGTH)
+            self.newMessage.emit(message)
 
     def acceptConnection(self):
         newClient = self.tcpServer.nextPendingConnection()
@@ -72,15 +52,6 @@ class RobotServer(QObject):
             print("interface.py: TCP client error")
             # print("TCP client error: ", self.controller.errorString())
         print("interface.py: Need to close the socket and remove the the client from the list")
-
-
-    def write(self, message, client):
-        if client is not None:
-            message.append((256 - sum(message)) % 256)  # checksum
-            client.write(self.struct.pack(*message))
-            print("interface.py: Sent ", str(message))
-        else:
-            print("interface.py: Error: trying to send massage ", str(message), "to an None client")
 
 class RobotClient(QObject):
     newMessage = pyqtSignal(tuple)
