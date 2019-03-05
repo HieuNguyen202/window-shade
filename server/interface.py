@@ -38,6 +38,7 @@ class Node(QObject):
         super(Monitor, self).__init__()
         self.tcpClient = None
         self.attach(tcpClient)
+    '''Methods to be used by the the child classes'''
 
     def attach(self, tcpClient):
         if self.tcpClient != None:
@@ -57,10 +58,11 @@ class Node(QObject):
         self.tcpClientDetached()
 
     def write(self, command, val):
-        message = command + str(val).zfill(MESSAGE_LENGTH-1)
+        valStr = str(val).zfill(MESSAGE_LENGTH-1)
+        message = command + valStr
+        if len(message) > MESSAGE_LENGTH:
+            raise ValueError
         self.tcpClient.write(message)
-        #TODO send the message
-
 
     def newInput(self, input):
         if input[0] == LIGHT:
@@ -70,8 +72,8 @@ class Node(QObject):
         else:
             print('Unknown input:', input)
 
+    '''Abstrat methods all children need to implement.'''
     def setSharePos(self, val):
-
         print("Need to implement newSensorData")
 
     def newSensorData(self, val):
