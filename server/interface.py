@@ -14,7 +14,7 @@ def getIPAddress():
     return ipAddress.toString()
 
 class Server(QTcpServer):
-    newConnection = pyqtSignal(QTcpSocket)
+    newClient = pyqtSignal(QTcpSocket)
     def __init__(self):
         super(Server, self).__init__()
         self.newConnection.connect(self.acceptConnection)
@@ -26,7 +26,7 @@ class Server(QTcpServer):
         print('interface.py: The server is running on', ipAddress, 'port', self.serverPort())
 
     def acceptConnection(self):
-        self.newConnection.emit(self.nextPendingConnection())
+        self.newClient.emit(self.nextPendingConnection())
 
     def acceptErrorHandler(self, socketError):
         print("interface.py: Server accept error", socketError)
@@ -35,7 +35,7 @@ class Node(QObject):
     newOutput = pyqtSignal(bytes)
 
     def __init__(self, tcpClient):
-        super(Monitor, self).__init__()
+        super(Node, self).__init__()
         self.tcpClient = None
         self.attach(tcpClient)
     '''Methods to be used by the the child classes'''
@@ -44,7 +44,8 @@ class Node(QObject):
         if self.tcpClient != None:
             self.detach()
         tcpClient.readyRead.connect(self.newInput)
-        tcpClient.error.connect(self.connectionError)
+        tcpClient.error.connect(self.socketError)
+        tcpClient.error.connect(self.detach)
         self.newOutput.connect(tcpClient.write)
         self.tcpClient = tcpClient
         self.tcpClientAttached()
@@ -52,8 +53,9 @@ class Node(QObject):
     #Detach the tcpClient from the Node
     def detach(self):
         self.tcpClient.readyRead.disconnect(self.newInput)
-        self.tcpClient.error.disconnect(self.connectionError)
-        self.newOutput.disconnect(tcpClient.write)
+        self.tcpClient.error.disconnect(self.socketError)
+        self.tcpClient.error.disconnect(self.detach)
+        self.newOutput.disconnect(self.tcpClient.write)
         self.tcpClient = None
         self.tcpClientDetached()
 
@@ -64,17 +66,20 @@ class Node(QObject):
             raise ValueError
         self.tcpClient.write(message)
 
-    def newInput(self, input):
-        if input[0] == LIGHT:
-            self.newSensorData(int(input[1:]))
-        elif input[0] == SHADE_POS:
-            self.newShadePos(int(input[1:]))
-        else:
-            print('Unknown input:', input)
+    def newInput(self):
+        while self.tcpClient.bytesAvailable() >= MESSAGE_LENGTH:
+            input = self.tcpClient.read(MESSAGE_LENGTH)
+            if input[0] == LIGHT:
+                self.newSensorData(int(input[1:]))
+            elif input[0] == SHADE_POS:
+                self.newShadePos(int(input[1:]))
+            else:
+                print('Unknown input:', input)
+
+    def setShadePos(self, val):
+        self.write(SET_SHADE_POS, val)
 
     '''Abstrat methods all children need to implement.'''
-    def setSharePos(self, val):
-        print("Need to implement newSensorData")
 
     def newSensorData(self, val):
         print("Need to implement newSensorData")
@@ -88,15 +93,24 @@ class Node(QObject):
     def tcpClientDetached(self):
         print("Need to implement tcpClientDetached")
 
-    def connectionError(self):
+    def socketError(self, status):
         print("Need to implement connectionError")
 
 class CLINode(Node):
-    def __init__(self):
-        super(CLI, self).__init__()
+    def __init__(self, tcpClient):
+        super(CLINode, self).__init__(tcpClient)
 
     def newSensorData(self, val):
-        pass
+        print(self.tcpClient.peerAddress().toString()+": newSensorData(",val,").")
 
     def newShadePos(self, val):
-        pass
+        print(self.tcpClient.peerAddress().toString()+": newShadePos(",val,").")
+
+    def tcpClientAttached(self):
+        print(self.tcpClient.peerAddress().toString()+": tcpClientAttached().")
+
+    def tcpClientDetached(self):
+        print(self.tcpClient.peerAddress().toString()+": tcpClientDetached().")
+
+    def socketError(self, status):
+        print(self.tcpClient.peerAddress().toString()+": setSharePos(",status,").")

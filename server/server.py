@@ -2,20 +2,19 @@
 from interface import *
 from PyQt5.QtCore import QCoreApplication
 server = None
-clients = list()
+nodes = list()
 
 
 def startListening():
     global server
     server = Server()
-    server.newConnection.connect(appendNewClient)
+    server.newClient.connect(appendNewClient)
 
 def appendNewClient(client):
-    global clients
-    client.readyRead.connect(readNewMessage)
-    client.error.connect(clientError)
+    global nodes
+    node = CLINode(client)
     print("New connection from: ", client.peerAddress().toString(), 'port', client.peerPort())
-    clients.append(client)
+    nodes.append(node)
 
 def readNewMessage(self):
     #TODO: create new distributed node Object and give the client object, GUI interface, or command line interface
