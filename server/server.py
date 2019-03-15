@@ -4,7 +4,6 @@ from PyQt5.QtCore import QCoreApplication
 server = None
 nodes = list()
 
-
 def startListening():
     global server
     server = Server()
@@ -30,7 +29,6 @@ def clientError(self, socketError):
         print("interface.py: TCP client error")
         # print("TCP client error: ", self.controller.errorString())
     print("interface.py: Need to close the socket and remove the the client from the list")
-
 
 if __name__ == '__main__':
     print("Running server.py")
