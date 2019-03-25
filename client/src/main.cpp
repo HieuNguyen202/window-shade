@@ -9,6 +9,8 @@ IPAddress serverip(192,168,0,19);
 WiFiClient client;
 char dataIn[MESSAGE_LENGTH];
 char dataOut[MESSAGE_LENGTH + 1];       //Nul char to terminate the string
+
+//TODO: deleted this, not nedded
 //l: len is including the check sum byte
 void checksum(char* raw, int l){
   unsigned char sum = 0, i;
@@ -44,7 +46,6 @@ void setup() {
   connectToWirelessRouter();
   if(client.connect(serverip,1234)){    //Connect to server
     Serial.println("Connected to server!");
-
   } else {
     Serial.println("Failed to connect to server!");
   }
@@ -59,26 +60,15 @@ void loop() {
         Serial.printf("New message received: [%d, %d, %d, %d]!", dataIn[0], dataIn[1], dataIn[2], dataIn[3], dataIn[4]);
       }
     }
-
-    //Send message
-    dataOut[0] = 2;
-    dataOut[1] = 1;
-    dataOut[2] = 2;
-    dataOut[3] = 3;
-    dataOut[MESSAGE_LENGTH] = 0;
-
-    checksum(dataOut, MESSAGE_LENGTH);
-    // client.write(dataOut);
+    //New message structure [A single command char][an four digit number decoded in ASCII]
     client.print("m");
     client.print(1234);
-    //m1234
 
   } else{                                           //Connection failed
     Serial.printf("Wifi connection failed with status %d.\n", WiFi.status());
   }
+  //Read sensor data
   // delay(100);
   // Serial.println(analogRead(ADC_0db)); //pin ADC7
   // delay(100);
-
-
 }
