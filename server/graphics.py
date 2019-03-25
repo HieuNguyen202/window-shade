@@ -42,8 +42,9 @@ class Ui_MainWindow(object):
 
         #Set up widgets
         self.m = DynamicPlotWidget(sampleinterval=0.05, timewindow=10.)
+        self.m1 = DynamicPlotWidget(sampleinterval=0.05, timewindow=10.)
+        self.m2 = DynamicPlotWidget(sampleinterval=0.05, timewindow=10.)
         self.labelStatus = QtWidgets.QLabel("No status!")
-
 
         #Add widgets to menu bar
 
@@ -55,10 +56,12 @@ class Ui_MainWindow(object):
         self.statusBar.addWidget(self.labelStatus)
 
         #Add widgets to the layout
-        self.layout.addWidget(self.m, 1, 1)
+        self.layout.addWidget(self.m)
+        self.layout.addWidget(self.m1)
+        self.layout.addWidget(self.m2)
 
 class DynamicPlotWidget(PlotWidget):
-    def __init__(self, sampleinterval=0.1, timewindow=10., size=(600,350), title='Give me a title!'):
+    def __init__(self, sampleinterval=0.1, timewindow=10., size=(600,350), title=''):
         super(DynamicPlotWidget, self).__init__(title=title)
         # Data stuff
         self._interval = int(sampleinterval*1000)
