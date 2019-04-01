@@ -1,6 +1,12 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #define MESSAGE_LENGTH 5  //including one byte checksum
+
+#define STEP_PIN 26
+#define DIR_PIN 27
+#define ENABLE_PIN 14
+#define LIGHT_SENSOR_PIN A0
+
 int count  = 0;
 int status;
 const char* ssid = "Mars";
@@ -41,8 +47,7 @@ char sum(char* arr, char len){
   return _sum;
 }
 
-void setup() {
-  Serial.begin(9600);
+void setUpCommunication(){
   connectToWirelessRouter();
   if(client.connect(serverip,1234)){    //Connect to server
     Serial.println("Connected to server!");
@@ -51,7 +56,14 @@ void setup() {
   }
 }
 
-void loop() {
+void setupMotor(){
+  pinMode(DIR_PIN, OUTPUT);
+  pinMode(STEP_PIN, OUTPUT);
+  pinMode(ENABLE_PIN, OUTPUT);
+  digitalWrite(ENABLE_PIN,LOW); // Set Enable low
+}
+
+void tcpReceive(){
   if(client.connected()){
     //Receive message
     while(client.available()>MESSAGE_LENGTH){
@@ -67,8 +79,32 @@ void loop() {
   } else{                                           //Connection failed
     Serial.printf("Wifi connection failed with status %d.\n", WiFi.status());
   }
-  //Read sensor data
-  // delay(100);
-  // Serial.println(analogRead(ADC_0db)); //pin ADC7
-  // delay(100);
+}
+
+int getLight(){
+   return analogRead(A0); //pin ADC7
+}
+
+void motorTest(){
+  digitalWrite(ENABLE_PIN, LOW); // Set Enable low
+  digitalWrite(DIR_PIN, HIGH); // Set Dir high
+  Serial.println("Loop 200 steps (1 rev)");
+  for(int x = 0; x < 200; x++) // Loop 200 times
+  {
+    digitalWrite(STEP_PIN, HIGH); // Output high
+    delay(1); // Wait
+    digitalWrite(STEP_PIN,LOW); // Output low
+    delay(1); // Wait
+    }
+  Serial.println("Pause");                                                     
+  delay(1000); // pause one second
+}
+
+void setup() {
+  Serial.begin(9600);
+  
+}
+
+void loop() {
+  Serial.println(getLight());
 }
