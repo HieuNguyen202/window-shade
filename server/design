@@ -1,19 +1,20 @@
 Server:
     Manage a list of clients connected
-    emit a signal when there is a client connected or disconnected
+    (Done) emit a signal when there is a client connected or disconnected
     (Done) emit message sent by the client
-    send a message to a client
-    broadcast a message to the clients
+    (Done) Send a message to a client
+    Broadcast a message to the clients
 Message:
     (Done) Pack and unpack message
     Unified message structure
-    Checksum
+    (Not possible with the ESP because it can't send a NULL char) Checksum
     Kind of message
 GUI:
     Have handler for a message signal
     Have handler for connect, disconnect signal
-    Have views to control the sensors, motors
-    Views to display sensors states
+    (Done) Have views to control motors
+    (Done) Have views to display sensors data
+    (Done) Real time plot for sensor data
 Command Line Interface:
     (Done) Print messages of TCP events
     Print sensor data
