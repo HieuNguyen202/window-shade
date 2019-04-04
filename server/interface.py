@@ -5,6 +5,7 @@ LIGHT = 'l'
 SHADE_POS = 'p'
 SET_SHADE_POS = 'p'
 
+"""Get the IP address of the host computer."""
 def getIPAddress():
     for ipAddress in QNetworkInterface.allAddresses():
         if ipAddress != QHostAddress.LocalHost and ipAddress.toIPv4Address() != 0:
@@ -13,6 +14,7 @@ def getIPAddress():
         ipAddress = QHostAddress(QHostAddress.LocalHost)
     return ipAddress.toString()
 
+"""Represent the central node. accept and process TCP request from distributed nodes."""
 class Server(QTcpServer):
     newClient = pyqtSignal(QTcpSocket)
     def __init__(self):
@@ -31,6 +33,7 @@ class Server(QTcpServer):
     def acceptErrorHandler(self, socketError):
         print("interface.py: Server accept error", socketError)
 
+"""Represent a distributed node. Contains interfaces to interact with the distributed nodes."""
 class Node(QObject):
     newOutput = pyqtSignal(bytes)
 
@@ -96,6 +99,7 @@ class Node(QObject):
     def socketError(self, status):
         print("Need to implement connectionError")
 
+"""An Node implementation that is used in a command line interface. Used in computer with no graphics"""
 class CLINode(Node):
     def __init__(self, tcpClient):
         super(CLINode, self).__init__(tcpClient)

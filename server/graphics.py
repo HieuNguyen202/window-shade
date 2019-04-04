@@ -7,6 +7,7 @@ import time
 import math
 import numpy as np
 
+"""The mainwindow of the GUI"""
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         #Set up window
@@ -57,6 +58,7 @@ class Ui_MainWindow(object):
 
         self.layout.addWidget(self.node)
 
+"""Real time plot"""
 class DynamicPlotWidget(PlotWidget):
     def __init__(self, sampleinterval=0.1, timewindow=10., size=(600,350), title=''):
         super(DynamicPlotWidget, self).__init__(title=title)
@@ -80,6 +82,7 @@ class DynamicPlotWidget(PlotWidget):
         self.y[:] = self.databuffer
         self.curve.setData(self.x, self.y)
 
+"""A slider widget with name and marks."""
 class SliderWidget(QtWidgets.QWidget):
     def __init__(self, name = "Slider's Name", minVal = 0, maxVal=100):
         super(SliderWidget, self).__init__()
@@ -107,6 +110,7 @@ class SliderWidget(QtWidgets.QWidget):
             label.setAlignment(QtCore.Qt.AlignCenter)
             self.layout.addWidget(label, i+2,2 ,1 ,1)
 
+"""Contains controls (buttons, sliders) of a distributed node."""
 class NodeWidget(QtWidgets.QWidget):
     def __init__(self):
         super(NodeWidget, self).__init__()
@@ -140,6 +144,7 @@ class NodeWidget(QtWidgets.QWidget):
         # self.buttonDeliver.pressed.connect(lambda: self.buttonDeliverPressed.emit(self.slider.slider.value()))
         # self.buttonBack.pressed.connect(lambda: self.buttonBackPressed.emit(-self.slider.slider.value()))
         # self.buttonStop.pressed.connect(lambda: self.buttonStopPressed.emit(0))
+
 def getdata():
     global m
     frequency = 0.5
