@@ -41,9 +41,7 @@ class Ui_MainWindow(object):
         MainWindow.addToolBar(QtCore.Qt.TopToolBarArea, self.mainToolBar)
 
         #Set up widgets
-        self.m = DynamicPlotWidget(sampleinterval=0.05, timewindow=10.)
-        self.m1 = DynamicPlotWidget(sampleinterval=0.05, timewindow=10.)
-        self.m2 = DynamicPlotWidget(sampleinterval=0.05, timewindow=10.)
+        self.node = NodeWidget()
         self.labelStatus = QtWidgets.QLabel("No status!")
 
         #Add widgets to menu bar
@@ -56,9 +54,8 @@ class Ui_MainWindow(object):
         self.statusBar.addWidget(self.labelStatus)
 
         #Add widgets to the layout
-        self.layout.addWidget(self.m)
-        self.layout.addWidget(self.m1)
-        self.layout.addWidget(self.m2)
+
+        self.layout.addWidget(self.node)
 
 class DynamicPlotWidget(PlotWidget):
     def __init__(self, sampleinterval=0.1, timewindow=10., size=(600,350), title=''):
@@ -83,6 +80,66 @@ class DynamicPlotWidget(PlotWidget):
         self.y[:] = self.databuffer
         self.curve.setData(self.x, self.y)
 
+class SliderWidget(QtWidgets.QWidget):
+    def __init__(self, name = "Slider's Name", minVal = 0, maxVal=100):
+        super(SliderWidget, self).__init__()
+        self.layout = QtWidgets.QGridLayout()
+        self.setLayout(self.layout)
+        #create widgets
+        self.lbName = QtWidgets.QLabel(name)
+        self.slider = QtWidgets.QSlider(QtCore.Qt.Vertical)
+
+        #setup widgets
+        numInterval = 5
+        interval = (maxVal - minVal)//numInterval
+
+        self.slider.setRange(0, 100)
+        self.slider.setValue(50)
+        self.slider.setTickPosition(QtWidgets.QSlider.TicksBelow)
+        self.slider.setTickInterval(interval)
+
+        #Add widgets to layout
+        self.layout.addWidget(self.lbName, 1, 1, 1, 2)
+        self.layout.addWidget(self.slider, 2, 1, numInterval + 1, 1)
+        #Add marks numbers
+        for i in range(numInterval + 1):
+            label = QtWidgets.QLabel(str(i*interval))
+            label.setAlignment(QtCore.Qt.AlignCenter)
+            self.layout.addWidget(label, i+2,2 ,1 ,1)
+
+class NodeWidget(QtWidgets.QWidget):
+    def __init__(self):
+        super(NodeWidget, self).__init__()
+        self.layout = QtWidgets.QGridLayout()
+        self.setLayout(self.layout)
+        # self.layout.setAlignment(pg.QtCore.Qt.AlignCenter)
+
+        #Create button and sliders
+        self.btnUp =            QtWidgets.QPushButton("Up")
+        self.btnDown =          QtWidgets.QPushButton("Down")
+        self.btnSetMaxPos =     QtWidgets.QPushButton("Set Max Pos")
+        self.btnSetMinPos =     QtWidgets.QPushButton("Set Min Pos")
+        self.btnCalibrate =     QtWidgets.QPushButton("Calibrate")
+        self.btnShowHidePlot =  QtWidgets.QPushButton("Plot")
+
+        self.sliderPos = SliderWidget("Shade Pos")
+        self.sliderLight = SliderWidget("Light")
+        self.plot = DynamicPlotWidget(sampleinterval=0.05, timewindow=10.)
+
+        # self.layout.addWidget(widget, row, column, rowSpan, columnSpan)
+        self.layout.addWidget(self.plot, 1, 1, 1, 4)
+        self.layout.addWidget(self.sliderPos, 2, 3, 3, 1)
+        self.layout.addWidget(self.sliderLight, 2, 4, 3, 1)
+        self.layout.addWidget(self.btnUp, 2, 1)
+        self.layout.addWidget(self.btnDown, 3, 1)
+        self.layout.addWidget(self.btnSetMaxPos, 2, 2)
+        self.layout.addWidget(self.btnSetMinPos, 3, 2)
+        self.layout.addWidget(self.btnCalibrate, 4, 1)
+        self.layout.addWidget(self.btnShowHidePlot, 4, 2)
+
+        # self.buttonDeliver.pressed.connect(lambda: self.buttonDeliverPressed.emit(self.slider.slider.value()))
+        # self.buttonBack.pressed.connect(lambda: self.buttonBackPressed.emit(-self.slider.slider.value()))
+        # self.buttonStop.pressed.connect(lambda: self.buttonStopPressed.emit(0))
 def getdata():
     global m
     frequency = 0.5
@@ -98,6 +155,6 @@ if __name__ == '__main__':
     MainWindow.show()
 
     timer = QtCore.QTimer()
-    timer.timeout.connect(lambda: ui.m.appendData(getdata()))
+    timer.timeout.connect(lambda: ui.node.plot.appendData(getdata()))
     timer.start(1000)
     app.exec_()
