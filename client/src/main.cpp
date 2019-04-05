@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
-#define MESSAGE_LENGTH 5  //including one byte checksum
+#define MESSAGE_LENGTH 6  //including one byte checksum
 
 #define STEP_PIN 26
 #define DIR_PIN 27
@@ -11,7 +11,7 @@ int count  = 0;
 int status;
 const char* ssid = "Mars";
 const char* password = "3941HIEU";
-IPAddress serverip(192,168,0,19);
+IPAddress serverip(192,168,0,25);
 WiFiClient client;
 char dataIn[MESSAGE_LENGTH];
 char dataOut[MESSAGE_LENGTH + 1];       //Nul char to terminate the string
@@ -68,14 +68,13 @@ void tcpReceive(){
     //Receive message
     while(client.available()>MESSAGE_LENGTH){
       client.readBytes(dataIn, MESSAGE_LENGTH);     //Read new message
-      if(sum(dataIn, MESSAGE_LENGTH)==0){           //Checksum verified
-        Serial.printf("New message received: [%d, %d, %d, %d]!", dataIn[0], dataIn[1], dataIn[2], dataIn[3], dataIn[4]);
-      }
+        Serial.printf("New message received: %s\n", dataIn);
+        client.print(dataIn);
     }
-    //New message structure [A single command char][an four digit number decoded in ASCII]
-    client.print("m");
-    client.print(1234);
 
+    //New message structure [A single command char][an four digit number decoded in ASCII]
+    //client.print("m");
+    //client.print(1234);
   } else{                                           //Connection failed
     Serial.printf("Wifi connection failed with status %d.\n", WiFi.status());
   }
@@ -102,9 +101,9 @@ void motorTest(){
 
 void setup() {
   Serial.begin(9600);
-  
+  setUpCommunication();
 }
 
 void loop() {
-  Serial.println(getLight());
+  tcpReceive();
 }

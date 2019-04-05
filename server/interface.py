@@ -105,7 +105,7 @@ class Node(QObject):
                     self.newLightLowerLimit.emit(val)
             elif input[0] == 'c':
                 status = input[MESSAGE_LENGTH - 1]  #last digit
-                self.newCalibrate.emit(status)
+                self.newCalibrate.emit(int(status))
             elif input[0] == 's':
                 val = int(input[2:])
                 if input[1] == '1':
