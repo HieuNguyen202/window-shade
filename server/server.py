@@ -14,6 +14,24 @@ def appendNewClient(client):
     node = CLINode(client)
     print("New connection from: ", client.peerAddress().toString(), 'port', client.peerPort())
     nodes.append(node)
+    testCommunication()
+
+def testCommunication():
+    global nodes
+    n = nodes[-1]
+    n.getPos()
+    n.getLight()
+    n.getPosMax()
+    n.getLightMax()
+    n.getPosUpperLimit()
+    n.getLightUpperLimit()
+    n.getPosLowerLimit()
+    n.getLightLowerLimit()
+    n.calibrate()
+    n.setPos(100)
+    n.setLight(200)
+    n.setModeSensor(1)
+    n.setModeLight(1)
 
 def readNewMessage(self):
     #TODO: create new distributed node Object and give the client object, GUI interface, or command line interface
