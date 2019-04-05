@@ -197,3 +197,31 @@ class CLINode(Node):
 
     def socketError(self, status):
         print(self.tcpClient.peerAddress().toString()+": setSharePos(",status,").")
+
+"""An Node implementation that is used in a command line interface. Used in computer with no graphics"""
+class GUINode(Node):
+    def __init__(self, tcpClient, ui):
+        super(GUINode, self).__init__(tcpClient)
+        self.ui = ui
+        self.newPos.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPos(", val,")"))
+        self.newLight.connect(self.ui.plot.appendData)
+        self.newPosMax.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPosMax(", val,")"))
+        self.newLightMax.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newLightMax(", val,")"))
+        self.newPosUpperLimit.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPosUpperLimit(", val,")"))
+        self.newLightUpperLimit.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newLightUpperLimit(", val,")"))
+        self.newPosLowerLimit.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPosLowerLimit(", val,")"))
+        self.newLightLowerLimit.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newLightLowerLimit(", val,")"))
+        self.newCalibrate.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newCalibrate(", val,")"))
+        self.newSetPos.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetPos(", val,")"))
+        self.newSetLight.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetLight(", val,")"))
+        self.newSetModeSensor.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetModeSensor(", val,")"))
+        self.newSetModeLight.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetModeLight(", val,")"))
+
+    def tcpClientAttached(self):
+        print(self.tcpClient.peerAddress().toString()+": tcpClientAttached().")
+
+    def tcpClientDetached(self):
+        print(self.tcpClient.peerAddress().toString()+": tcpClientDetached().")
+
+    def socketError(self, status):
+        print(self.tcpClient.peerAddress().toString()+": setSharePos(",status,").")

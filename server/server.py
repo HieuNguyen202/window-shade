@@ -1,13 +1,16 @@
 #!/usr/bin/python3
 from interface import *
+from graphics import *
 from PyQt5.QtCore import QCoreApplication
+from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
+ui = None
 server = None
 nodes = list()
 
 def startListening():
     global server
     server = Server()
-    server.newClient.connect(appendNewClient)
+    server.newClient.connect(appendNewClientGUI)
 
 def appendNewClient(client):
     global nodes
@@ -15,6 +18,11 @@ def appendNewClient(client):
     print("New connection from: ", client.peerAddress().toString(), 'port', client.peerPort())
     nodes.append(node)
     testCommunication()
+
+def appendNewClientGUI(client):
+    global nodes, ui
+    node = GUINode(client, ui.appendNode())
+    nodes.append(node)
 
 def testCommunication():
     global nodes
@@ -51,6 +59,10 @@ def clientError(self, socketError):
 if __name__ == '__main__':
     print("Running server.py")
     import sys
-    app = QCoreApplication(sys.argv)
+    app = QtGui.QApplication(sys.argv)
+    MainWindow = QtWidgets.QMainWindow()
+    ui = Ui_MainWindow()
+    ui.setupUi(MainWindow)
+    MainWindow.show()
     startListening()
     app.exec_()

@@ -15,6 +15,8 @@ class Ui_MainWindow(object):
         MainWindow.setWindowTitle("Window shade monitor")
         MainWindow.resize(614, 498)
 
+        self.nodes = list()
+
         #Set up central widget
         self.centralWidget = QtWidgets.QWidget(MainWindow)
         self.centralWidget.setObjectName("centralWidget")
@@ -42,7 +44,6 @@ class Ui_MainWindow(object):
         MainWindow.addToolBar(QtCore.Qt.TopToolBarArea, self.mainToolBar)
 
         #Set up widgets
-        self.node = NodeWidget()
         self.labelStatus = QtWidgets.QLabel("No status!")
 
         #Add widgets to menu bar
@@ -56,7 +57,11 @@ class Ui_MainWindow(object):
 
         #Add widgets to the layout
 
-        self.layout.addWidget(self.node)
+    def appendNode(self):
+        n = NodeWidget()
+        self.layout.addWidget(n)
+        self.nodes.append(n)
+        return n
 
 """Real time plot"""
 class DynamicPlotWidget(PlotWidget):
