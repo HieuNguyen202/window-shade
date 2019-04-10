@@ -15,6 +15,7 @@ IPAddress serverip(192,168,0,25);
 WiFiClient client;
 char dataIn[MESSAGE_LENGTH];
 char dataOut[MESSAGE_LENGTH + 1];       //Nul char to terminate the string
+int currPos, maxPos, minPos;
 
 //TODO: deleted this, not nedded
 //l: len is including the check sum byte
@@ -60,9 +61,10 @@ void setupMotor(){
   pinMode(DIR_PIN, OUTPUT);
   pinMode(STEP_PIN, OUTPUT);
   pinMode(ENABLE_PIN, OUTPUT);
-  digitalWrite(ENABLE_PIN,LOW); // Set Enable low
+  currPos = 0;
+  minPos = 0;
+  maxPos = 180;
 }
-
 void tcpReceive(){
   if(client.connected()){
     //Receive message
@@ -75,7 +77,6 @@ void tcpReceive(){
     Serial.printf("Wifi connection failed with status %d.\n", WiFi.status());
   }
 }
-
 int getLight(){
    return analogRead(A0); //pin ADC7
 }
@@ -95,15 +96,88 @@ void motorTest(){
   delay(1000); // pause one second
 }
 
+//Turn the motor with a diff of increment. If diff < 0, direction is reversed. This function is not bound protected.
+void turn(int diff){
+  digitalWrite(ENABLE_PIN, LOW); //Enable the motor
+  digitalWrite(DIR_PIN, diff >= 0 ? LOW : HIGH); // Set direction
+  diff = abs(diff);
+  for(size_t _ = 0; _ < diff; _++)
+  {
+    digitalWrite(STEP_PIN, HIGH);
+    delay(1);
+    digitalWrite(STEP_PIN,LOW);
+    delay(1);
+  }
+  digitalWrite(ENABLE_PIN, HIGH); //Disable the motor
+}
+
+//Turn the motor to a given pos. If the pos if out of bound, adjust to to at bound. Update the global currPos. Return the number of steps it actually turned.
+int setPos(int pos){
+  int diff;
+  if(pos > maxPos)
+    pos = maxPos;
+  if (pos < minPos)
+    pos = minPos;
+  diff = pos - currPos;
+  turn(diff);       //Turn the motor
+  currPos = pos;    //Update new current pos.
+  return diff;
+}
+
+//Change the pos incrementally. If diff is < 0, the change is in reverse direction. This fuction is mechanically safe (bound protected).
+int incPos(int diff){
+  int pos = currPos + diff;
+  return setPos(pos);
+}
+
+void setPosTest(){
+  currPos = 90;
+  minPos = 0;
+  maxPos = 180;
+  int pos[] = {0, 90, -90, 90, 180, 90, 270, 90};
+  Serial.println("Starting setPosTest()");
+  for(size_t i = 0; i < 8; i++)
+  {
+      Serial.printf("Set pos: %d - diff: %d - currPos: %d\n", pos[i], setPos(pos[i]), currPos);
+      delay(1000);
+  }
+  Serial.println("SetPosTest(0 finished");
+}
+
+void incPosTest(){
+  currPos = 0;
+  minPos = 0;
+  maxPos = 180;
+  int inc = 30, prevPos, realInc;
+  Serial.println("Starting incPosTest()");
+  for(size_t _ = 0; _ < maxPos; _+=inc)
+  {
+    prevPos = currPos;
+    realInc = incPos(inc);
+    Serial.printf("From pos: %d - increment: %d - to: %d\n", prevPos, realInc, currPos);
+    delay(1000);
+  }
+    for(size_t _ = 0; _ < maxPos; _+=inc)
+  {
+    prevPos = currPos;
+    realInc = incPos(-inc);
+    Serial.printf("From pos: %d - increment: %d - to: %d\n", prevPos, realInc, currPos);
+    delay(1000);
+  }
+  Serial.println("incPosTest(0 finished");
+}
+
 void setup() {
   Serial.begin(9600);
-  setUpCommunication();
+  // setUpCommunication();
+  setupMotor();
+  incPosTest();
 }
 void loop() {
   //tcpReceive();
   //New message structure [A single command char][an four digit number decoded in ASCII]
-  int val = getLight();
-  Serial.printf("g2%04d\n", val);
-  client.printf("g2%04d", val);
-  delay(1);
+  // int val = getLight();
+  // Serial.printf("g2%04d\n", val);
+  // client.printf("g2%04d", val);
+  // delay(100);
 }
