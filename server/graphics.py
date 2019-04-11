@@ -89,31 +89,33 @@ class DynamicPlotWidget(PlotWidget):
 
 """A slider widget with name and marks."""
 class SliderWidget(QtWidgets.QWidget):
-    def __init__(self, name = "Slider's Name", minVal = 0, maxVal=100):
+    def __init__(self, name = "Slider's Name", min = 0, max=100, numInterval = 5):
         super(SliderWidget, self).__init__()
-        self.layout = QtWidgets.QGridLayout()
-        self.setLayout(self.layout)
+        layout = QtWidgets.QGridLayout()
+        self.setLayout(layout)
+
         #create widgets
         self.lbName = QtWidgets.QLabel(name)
         self.slider = QtWidgets.QSlider(QtCore.Qt.Vertical)
 
         #setup widgets
-        numInterval = 5
-        interval = (maxVal - minVal)//numInterval
-
-        self.slider.setRange(0, 100)
-        self.slider.setValue(50)
+        interval = (max - min)//numInterval
+        self.slider.setRange(min, max)
+        self.slider.setValue(min)
         self.slider.setTickPosition(QtWidgets.QSlider.TicksBelow)
         self.slider.setTickInterval(interval)
+        self.slider.setSingleStep(interval)
 
         #Add widgets to layout
-        self.layout.addWidget(self.lbName, 1, 1, 1, 2)
-        self.layout.addWidget(self.slider, 2, 1, numInterval + 1, 1)
+        layout.addWidget(self.lbName, 1, 1, 1, 2)
+        layout.addWidget(self.slider, 2, 1, numInterval + 1, 1)
+
         #Add marks numbers
         for i in range(numInterval + 1):
             label = QtWidgets.QLabel(str(i*interval))
             label.setAlignment(QtCore.Qt.AlignCenter)
-            self.layout.addWidget(label, i+2,2 ,1 ,1)
+            layout.addWidget(label, numInterval - i +2, 2 ,1 ,1)
+
 
 """Contains controls (buttons, sliders) of a distributed node."""
 class NodeWidget(QtWidgets.QWidget):
@@ -131,13 +133,13 @@ class NodeWidget(QtWidgets.QWidget):
         self.btnCalibrate =     QtWidgets.QPushButton("Calibrate")
         self.btnShowHidePlot =  QtWidgets.QPushButton("Plot")
 
-        self.sliderPos = SliderWidget("Shade Pos")
+        self.sliderPos = None
         self.sliderLight = SliderWidget("Light")
         self.plot = DynamicPlotWidget(sampleinterval=0.05, timewindow=10.)
 
         # self.layout.addWidget(widget, row, column, rowSpan, columnSpan)
         self.layout.addWidget(self.plot, 1, 1, 1, 4)
-        self.layout.addWidget(self.sliderPos, 2, 3, 3, 1)
+
         self.layout.addWidget(self.sliderLight, 2, 4, 3, 1)
         self.layout.addWidget(self.btnUp, 2, 1)
         self.layout.addWidget(self.btnDown, 3, 1)
@@ -149,6 +151,12 @@ class NodeWidget(QtWidgets.QWidget):
         # self.buttonDeliver.pressed.connect(lambda: self.buttonDeliverPressed.emit(self.slider.slider.value()))
         # self.buttonBack.pressed.connect(lambda: self.buttonBackPressed.emit(-self.slider.slider.value()))
         # self.buttonStop.pressed.connect(lambda: self.buttonStopPressed.emit(0))
+
+    def updatePosSlider(self, max):
+        if self.sliderPos != None:
+            self.layout.removeItem(self.sliderPos)
+        self.sliderPos = SliderWidget("Shade Pos", min=0, max=max, numInterval=5)
+        self.layout.addWidget(self.sliderPos, 2, 3, 3, 1)
 
 def getdata():
     global m

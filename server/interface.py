@@ -48,6 +48,9 @@ class Node(QObject):
     newSetLight = pyqtSignal(int)
     newSetModeSensor = pyqtSignal(int)
     newSetModeLight = pyqtSignal(int)
+    newSetMinPos = pyqtSignal(int)
+    newSetMaxPos = pyqtSignal(int)
+    newStep = pyqtSignal(int)
 
     def __init__(self, tcpClient):
         super(Node, self).__init__()
@@ -81,6 +84,7 @@ class Node(QObject):
 
     def write(self, message):
         self.tcpClient.write(message.encode())
+        print("wrote", message)
 
     def newInput(self):
         while self.tcpClient.bytesAvailable() >= MESSAGE_LENGTH:
@@ -89,20 +93,22 @@ class Node(QObject):
                 val = int(input[2:])
                 if input[1] == '1':
                     self.newPos.emit(val)
-                if input[1] == '2':
+                elif input[1] == '2':
                     self.newLight.emit(val)
-                if input[1] == '3':
+                elif input[1] == '3':
                     self.newPosMax.emit(val)
-                if input[1] == '4':
+                elif input[1] == '4':
                     self.newLightMax.emit(val)
-                if input[1] == '5':
+                elif input[1] == '5':
                     self.newPosUpperLimit.emit(val)
-                if input[1] == '6':
+                elif input[1] == '6':
                     self.newLightUpperLimit.emit(val)
-                if input[1] == '7':
+                elif input[1] == '7':
                     self.newPosLowerLimit.emit(val)
-                if input[1] == '8':
+                elif input[1] == '8':
                     self.newLightLowerLimit.emit(val)
+                else:
+                    print('Unknown input:', input)
             elif input[0] == 'c':
                 status = input[MESSAGE_LENGTH - 1]  #last digit
                 self.newCalibrate.emit(int(status))
@@ -110,12 +116,20 @@ class Node(QObject):
                 val = int(input[2:])
                 if input[1] == '1':
                     self.newSetPos.emit(val)
-                if input[1] == '2':
+                elif input[1] == '2':
                     self.newSetLight.emit(val)
-                if input[1] == '3':
+                elif input[1] == '3':
                     self.newSetModeSensor.emit(val)
-                if input[1] == '4':
+                elif input[1] == '4':
                     self.newSetModeLight.emit(val)
+                elif input[1] == '5':
+                    self.newSetMinPos.emit(val)
+                elif input[1] == '6':
+                    self.newSetMaxPos.emit(val)
+                elif input[1] == '7':
+                    self.newStep.emit(val)
+                else:
+                    print('Unknown input:', input)
             else:
                 print('Unknown input:', input)
 
@@ -128,31 +142,31 @@ class Node(QObject):
     def socketError(self, status):
         print("Need to implement connectionError")
 
-    def getPos(self, ):
+    def getPos(self):
         self.write("g10000")
 
-    def getLight(self, ):
+    def getLight(self):
         self.write("g20000")
 
-    def getPosMax(self, ):
+    def getPosMax(self):
         self.write("g30000")
 
-    def getLightMax(self, ):
+    def getLightMax(self):
         self.write("g40000")
 
-    def getPosUpperLimit(self, ):
+    def getPosUpperLimit(self):
         self.write("g50000")
 
-    def getLightUpperLimit(self, ):
+    def getLightUpperLimit(self):
         self.write("g60000")
 
-    def getPosLowerLimit(self, ):
+    def getPosLowerLimit(self):
         self.write("g70000")
 
-    def getLightLowerLimit(self, ):
+    def getLightLowerLimit(self):
         self.write("g80000")
 
-    def calibrate(self, ):
+    def calibrate(self):
         self.write("c00000")
 
     def setPos(self, pos):
@@ -160,6 +174,15 @@ class Node(QObject):
 
     def setLight(self, light):
         self.write(self.combine("s2", light))
+
+    def setMinPos(self):
+        self.write("s50000")
+
+    def setMaxPos(self):
+        self.write("s60000")
+
+    def step(self, steps):
+        self.write(self.combine("s7", steps))
 
     """interval = 0: on demand
     interval > 0: internal between messages in seconds"""
@@ -216,6 +239,19 @@ class GUINode(Node):
         self.newSetLight.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetLight(", val,")"))
         self.newSetModeSensor.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetModeSensor(", val,")"))
         self.newSetModeLight.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetModeLight(", val,")"))
+        self.newSetMinPos.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetMinPos(", val,")"))
+        self.newSetMaxPos.connect(self.updatePosSlider)
+        self.newStep.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newStep(", val,")"))
+
+        ui.btnSetMinPos.pressed.connect(self.setMinPos)
+        ui.btnSetMaxPos.pressed.connect(self.setMaxPos)
+
+        # self.buttonDeliver.pressed.connect(lambda: self.buttonDeliverPressed.emit(self.slider.slider.value()))
+        ui.btnUp.pressed.connect(lambda: self.step(100))
+        ui.btnDown.pressed.connect(lambda: self.step(-100))
+    def updatePosSlider(self, max):
+        self.ui.updatePosSlider(max)
+        self.ui.sliderPos.slider.sliderReleased.connect(lambda: self.setPos(self.ui.sliderPos.slider.value()))
 
     def tcpClientAttached(self):
         print(self.tcpClient.peerAddress().toString()+": tcpClientAttached().")
