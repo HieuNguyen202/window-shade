@@ -17,6 +17,9 @@ char dataIn[MESSAGE_LENGTH];
 char dataOut[MESSAGE_LENGTH + 1];       //Nul char to terminate the string
 int currPos, maxPos, minPos;
 
+int incPos(int diff);
+int setPos(int pos);
+
 //TODO: deleted this, not nedded
 //l: len is including the check sum byte
 void checksum(char* raw, int l){
@@ -56,22 +59,138 @@ void setUpCommunication(){
     Serial.println("Failed to connect to server!");
   }
 }
-
 void setupMotor(){
   pinMode(DIR_PIN, OUTPUT);
   pinMode(STEP_PIN, OUTPUT);
   pinMode(ENABLE_PIN, OUTPUT);
   currPos = 0;
-  minPos = 0;
-  maxPos = 180;
+  minPos = -10000;
+  maxPos = 10000;
 }
 void tcpReceive(){
   if(client.connected()){
     //Receive message
-    while(client.available()>MESSAGE_LENGTH){
+    int val;
+    while(client.available()>=MESSAGE_LENGTH){
       client.readBytes(dataIn, MESSAGE_LENGTH);     //Read new message
-        Serial.printf("New message received: %s\n", dataIn);
-        client.print(dataIn);
+        switch (dataIn[0])
+        {
+          case 'g':
+            switch (dataIn[1]){
+              case '0':
+                Serial.printf("Need to implement %s\n", dataIn);
+                break;
+              case '1':
+                Serial.printf("Need to implement %s\n", dataIn);
+                break;
+              case '2':
+                Serial.printf("Need to implement %s\n", dataIn);
+                break;
+              case '3':
+                Serial.printf("Need to implement %s\n", dataIn);
+                break;
+              case '4':
+                Serial.printf("Need to implement %s\n", dataIn);
+                break;
+              case '5':
+                Serial.printf("Need to implement %s\n", dataIn);
+                break;
+              case '6':
+                Serial.printf("Need to implement %s\n", dataIn);
+                break;
+              case '7':
+                Serial.printf("Need to implement %s\n", dataIn);
+                break;
+              case '8':
+                Serial.printf("Need to implement %s\n", dataIn);
+                break;
+              default:
+              Serial.printf("tcpReceive: Unknown command %s", dataIn);
+                break;
+            }
+            break;
+          case 'c':
+            switch (dataIn[1]){
+              case '0':
+                Serial.printf("Need to implement %s\n", dataIn);
+                break;
+              case '1':
+                Serial.printf("Need to implement %s\n", dataIn);
+                break;
+              case '2':
+                Serial.printf("Need to implement %s\n", dataIn);
+                break;
+              case '3':
+                Serial.printf("Need to implement %s\n", dataIn);
+                break;
+              case '4':
+                Serial.printf("Need to implement %s\n", dataIn);
+                break;
+              case '5':
+                Serial.printf("Need to implement %s\n", dataIn);
+                break;
+              case '6':
+                Serial.printf("Need to implement %s\n", dataIn);
+                break;
+              case '7':
+                Serial.printf("Need to implement %s\n", dataIn);
+                break;
+              case '8':
+                Serial.printf("Need to implement %s\n", dataIn);
+                break;
+              default:
+              Serial.printf("tcpReceive: Unknown command %s", dataIn);
+                break;
+            }
+            break;
+          case 's':
+            val = atoi(&dataIn[2]);
+            switch (dataIn[1])
+            {
+              case '0':
+                Serial.printf("Need to implement %s\n", dataIn);
+                break;
+              case '1': //setPos(pos)
+                val = setPos(val);
+                client.printf("%c%c%04d", dataIn[0], dataIn[1], val); //response with the same command header and the actual steps.
+                break;
+              case '2':
+                Serial.printf("Need to implement %s\n", dataIn);
+                break;
+              case '3':
+                Serial.printf("Need to implement %s\n", dataIn);
+                break;
+              case '4':
+                Serial.printf("Need to implement %s\n", dataIn);
+                break;
+              case '5': //setMinPos()
+                minPos = 0;
+                currPos = 0;
+                client.printf("%c%c%04d", dataIn[0], dataIn[1], minPos); //response with the same command header and the actual steps.
+                Serial.printf("setMinPos(%d)\n", minPos);
+                break;
+              case '6': //setMaxPos()
+                maxPos = currPos;
+                client.printf("%c%c%04d", dataIn[0], dataIn[1], maxPos); //response with the same command header and the actual steps.
+                Serial.printf("setMaxPos(%d)\n", maxPos);
+                break;
+              case '7': //step(steps)
+                val = incPos(val);
+                client.printf("%c%c%04d", dataIn[0], dataIn[1], val); //response with the same command header and the actual steps.
+                Serial.printf("steps(%d)\n", val);
+                break;
+              case '8':
+                Serial.printf("Need to implement %s\n", dataIn);
+                break;
+              default:
+              Serial.printf("tcpReceive: Unknown command %s", dataIn);
+                break;
+            }
+            break;
+          default:
+            Serial.printf("tcpReceive: Unknown command %s", dataIn);
+            break;
+        }
     }
   } else{                                           //Connection failed
     Serial.printf("Wifi connection failed with status %d.\n", WiFi.status());
@@ -80,7 +199,6 @@ void tcpReceive(){
 int getLight(){
    return analogRead(A0); //pin ADC7
 }
-
 void motorTest(){
   digitalWrite(ENABLE_PIN, LOW); // Set Enable low
   digitalWrite(DIR_PIN, HIGH); // Set Dir high
@@ -95,7 +213,6 @@ void motorTest(){
   Serial.println("Pause");                                                     
   delay(1000); // pause one second
 }
-
 //Turn the motor with a diff of increment. If diff < 0, direction is reversed. This function is not bound protected.
 void turn(int diff){
   digitalWrite(ENABLE_PIN, LOW); //Enable the motor
@@ -110,7 +227,6 @@ void turn(int diff){
   }
   digitalWrite(ENABLE_PIN, HIGH); //Disable the motor
 }
-
 //Turn the motor to a given pos. If the pos if out of bound, adjust to to at bound. Update the global currPos. Return the number of steps it actually turned.
 int setPos(int pos){
   int diff;
@@ -123,13 +239,11 @@ int setPos(int pos){
   currPos = pos;    //Update new current pos.
   return diff;
 }
-
 //Change the pos incrementally. If diff is < 0, the change is in reverse direction. This fuction is mechanically safe (bound protected).
 int incPos(int diff){
   int pos = currPos + diff;
   return setPos(pos);
 }
-
 void setPosTest(){
   currPos = 90;
   minPos = 0;
@@ -143,7 +257,6 @@ void setPosTest(){
   }
   Serial.println("SetPosTest(0 finished");
 }
-
 void incPosTest(){
   currPos = 0;
   minPos = 0;
@@ -166,15 +279,14 @@ void incPosTest(){
   }
   Serial.println("incPosTest(0 finished");
 }
-
 void setup() {
   Serial.begin(9600);
-  // setUpCommunication();
+  setUpCommunication();
   setupMotor();
-  incPosTest();
+  // incPosTest();
 }
 void loop() {
-  //tcpReceive();
+  tcpReceive();
   //New message structure [A single command char][an four digit number decoded in ASCII]
   // int val = getLight();
   // Serial.printf("g2%04d\n", val);
