@@ -1,6 +1,6 @@
 from PyQt5.QtNetwork import QHostAddress, QTcpServer, QTcpSocket, QNetworkInterface, QAbstractSocket
 from PyQt5.QtCore import pyqtSignal, QObject
-MESSAGE_LENGTH = 6  #Including checksum
+MESSAGE_LENGTH = 7  #Including checksum
 LIGHT = 'l'
 SHADE_POS = 'p'
 SET_SHADE_POS = 'p'
@@ -143,31 +143,31 @@ class Node(QObject):
         print("Need to implement connectionError")
 
     def getPos(self):
-        self.write("g10000")
+        self.write(self.combine("g1", 0))
 
     def getLight(self):
-        self.write("g20000")
+        self.write(self.combine("g2", 0))
 
     def getPosMax(self):
-        self.write("g30000")
+        self.write(self.combine("g3", 0))
 
     def getLightMax(self):
-        self.write("g40000")
+        self.write(self.combine("g4", 0))
 
     def getPosUpperLimit(self):
-        self.write("g50000")
+        self.write(self.combine("g5", 0))
 
     def getLightUpperLimit(self):
-        self.write("g60000")
+        self.write(self.combine("g6", 0))
 
     def getPosLowerLimit(self):
-        self.write("g70000")
+        self.write(self.combine("g7", 0))
 
     def getLightLowerLimit(self):
-        self.write("g80000")
+        self.write(self.combine("g8", 0))
 
     def calibrate(self):
-        self.write("c00000")
+        self.write(self.combine("c0", 0))
 
     def setPos(self, pos):
         self.write(self.combine("s1", pos))
@@ -176,10 +176,10 @@ class Node(QObject):
         self.write(self.combine("s2", light))
 
     def setMinPos(self):
-        self.write("s50000")
+        self.write(self.combine("s5", 0))
 
     def setMaxPos(self):
-        self.write("s60000")
+        self.write(self.combine("s6", 0))
 
     def step(self, steps):
         self.write(self.combine("s7", steps))
