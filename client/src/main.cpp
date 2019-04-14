@@ -1,9 +1,16 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <Ticker.h>
+#include "A4988.h"
 #define MESSAGE_LENGTH 7  //including one byte checksum
+
+#define MOTOR_STEPS 200
 #define MOTOR_ENABLE_PIN 27
 #define MOTOR_STEP_PIN 26
 #define MOTOR_DIR_PIN 25
+#define MOTOR_MS1 14
+#define MOTOR_MS2 12
+#define MOTOR_MS3 13
 
 #define LIGHT_SENSOR_PIN A0
 
@@ -12,8 +19,9 @@
 #define ENCODER_X_PIN 17
 
 #define PULSE_TO_STEP_FACTOR 2
+#define MICROSTEPS 1
 
-
+A4988 stepper(MOTOR_STEPS, MOTOR_DIR_PIN, MOTOR_STEP_PIN, MOTOR_ENABLE_PIN, MOTOR_MS1, MOTOR_MS2, MOTOR_MS3);
 
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 volatile long counter = 0;
@@ -26,16 +34,21 @@ IPAddress serverip(192,168,0,25);
 WiFiClient client;
 char dataIn[MESSAGE_LENGTH];
 char dataOut[MESSAGE_LENGTH + 1];       //Nul char to terminate the string
-volatile int currPos;
-int maxPos, minPos;
+volatile int currPos = 0;
+int maxPos = 10000, minPos = -10000, targetPos = 0;
 
-int incPos(int diff);
+void incPos(int diff);
 int setPos(int pos);
+void setTargetPos(int pos);
 
+int light = 0;
 
+Ticker tickerMeasureLight;
+
+//Handler for encoder counts
 void IRAM_ATTR pinAHandler(){
   portENTER_CRITICAL_ISR(&mux);
-  if (digitalRead(ENCODER_B_PIN) == HIGH) {
+  if (digitalRead(ENCODER_B_PIN) == LOW) {
     currPos++;
   } else {
     currPos--;
@@ -43,17 +56,7 @@ void IRAM_ATTR pinAHandler(){
   portEXIT_CRITICAL_ISR(&mux);
 }
 
-//TODO: deleted this, not nedded
-//l: len is including the check sum byte
-void checksum(char* raw, int l){
-  unsigned char sum = 0, i;
-  l--;
-  for(i = 0; i < l; i++){
-    sum += raw[i];
-  }
-  raw[i] = (256 - sum);
-}
-
+//Connect to the wireless router
 void connectToWirelessRouter(){
     WiFi.begin(ssid, password);
   while(WiFi.status()!=WL_CONNECTED){
@@ -65,15 +68,7 @@ void connectToWirelessRouter(){
   Serial.print("Your local IP address is ");
   Serial.println(WiFi.localIP());
 }
-
-char sum(char* arr, char len){
-  char _sum = 0;
-  for(char i = 0; i < len; i++){               //Verify checksum
-      _sum += arr[i];
-  }
-  return _sum;
-}
-
+//Connect to the server. Also connect the the wireless router before that.
 void setUpCommunication(){
   connectToWirelessRouter();
   if(client.connect(serverip,1234)){    //Connect to server
@@ -82,18 +77,11 @@ void setUpCommunication(){
     Serial.println("Failed to connect to server!");
   }
 }
-void setupMotor(){
-  pinMode(MOTOR_DIR_PIN, OUTPUT);
-  pinMode(MOTOR_STEP_PIN, OUTPUT);
-  pinMode(MOTOR_ENABLE_PIN, OUTPUT);
-  currPos = 0;
-  minPos = -10000;
-  maxPos = 10000;
-}
+//Receive and execute a command from server
 void tcpReceive(){
   if(client.connected()){
     //Receive message
-    int val;
+    int val, ret;
     while(client.available()>=MESSAGE_LENGTH){
       client.readBytes(dataIn, MESSAGE_LENGTH);     //Read new message
         switch (dataIn[0])
@@ -174,7 +162,7 @@ void tcpReceive(){
                 Serial.printf("Need to implement %s\n", dataIn);
                 break;
               case '1': //setPos(pos)
-                setPos(val);
+                setTargetPos(val);
                 client.printf("%c%c%05d", dataIn[0], dataIn[1], currPos); //response with the same command header and the actual steps.
                 break;
               case '2':
@@ -189,6 +177,7 @@ void tcpReceive(){
               case '5': //setMinPos()
                 minPos = 0;
                 currPos = 0;
+                targetPos = 0;
                 client.printf("%c%c%05d", dataIn[0], dataIn[1], minPos); //response with the same command header and the actual steps.
                 Serial.printf("setMinPos(%d)\n", minPos);
                 break;
@@ -221,102 +210,60 @@ void tcpReceive(){
     Serial.printf("Wifi connection failed with status %d.\n", WiFi.status());
   }
 }
-int getLight(){
-   return analogRead(A0); //pin ADC7
-}
-void motorTest(){
-  digitalWrite(MOTOR_ENABLE_PIN, LOW); // Set Enable low
-  digitalWrite(MOTOR_DIR_PIN, HIGH); // Set Dir high
-  Serial.println("Loop 200 steps (1 rev)");
-  for(int x = 0; x < 200; x++) // Loop 200 times
-  {
-    digitalWrite(MOTOR_STEP_PIN, HIGH); // Output high
-    delay(1); // Wait
-    digitalWrite(MOTOR_STEP_PIN,LOW); // Output low
-    delay(1); // Wait
-    }
-  Serial.println("Pause");                                                     
-  delay(1000); // pause one second
-}
-//Turn the motor with a diff of increment. If diff < 0, direction is reversed. This function is not bound protected.
-void turn(int diff){
-  digitalWrite(MOTOR_ENABLE_PIN, LOW); //Enable the motor
-  digitalWrite(MOTOR_DIR_PIN, diff >= 0 ? LOW : HIGH); // Set direction
-  int steps = abs(diff) / PULSE_TO_STEP_FACTOR;
-  for(size_t _ = 0; _ < steps; _++)
-  {
-    digitalWrite(MOTOR_STEP_PIN, HIGH);
-    delay(1);
-    digitalWrite(MOTOR_STEP_PIN,LOW);
-    delay(1);
-  }
-  digitalWrite(MOTOR_ENABLE_PIN, HIGH); //Disable the motor
-}
-//Turn the motor to a given pos. If the pos if out of bound, adjust to to at bound. Update the global currPos. Return the number of steps it actually turned.
-int setPos(int pos){
-  int diff;
-  if(pos > maxPos)
-    pos = maxPos;
-  if (pos < minPos)
-    pos = minPos;
-  diff = pos - currPos;
-  turn(diff);       //Turn the motor
-  return diff;
-}
-//Change the pos incrementally. If diff is < 0, the change is in reverse direction. This fuction is mechanically safe (bound protected).
-int incPos(int diff){
-  int pos = currPos + diff;
-  return setPos(pos);
-}
-void setPosTest(){
-  currPos = 90;
-  minPos = 0;
-  maxPos = 180;
-  int pos[] = {0, 90, -90, 90, 180, 90, 270, 90};
-  Serial.println("Starting setPosTest()");
-  for(size_t i = 0; i < 8; i++)
-  {
-      Serial.printf("Set pos: %d - diff: %d - currPos: %d\n", pos[i], setPos(pos[i]), currPos);
-      delay(1000);
-  }
-  Serial.println("SetPosTest(0 finished");
-}
-void incPosTest(){
-  currPos = 0;
-  minPos = 0;
-  maxPos = 180;
-  int inc = 30, prevPos, realInc;
-  Serial.println("Starting incPosTest()");
-  for(size_t _ = 0; _ < maxPos; _+=inc)
-  {
-    prevPos = currPos;
-    realInc = incPos(inc);
-    Serial.printf("From pos: %d - increment: %d - to: %d\n", prevPos, realInc, currPos);
-    delay(1000);
-  }
-    for(size_t _ = 0; _ < maxPos; _+=inc)
-  {
-    prevPos = currPos;
-    realInc = incPos(-inc);
-    Serial.printf("From pos: %d - increment: %d - to: %d\n", prevPos, realInc, currPos);
-    delay(1000);
-  }
-  Serial.println("incPosTest(0 finished");
-}
-void setup() {
-  Serial.begin(9600);
-  setUpCommunication();
-  setupMotor();
-  pinMode(ENCODER_A_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(ENCODER_A_PIN), pinAHandler, FALLING);
-  // incPosTest();
+
+//Update the light value
+void updateLight(){
+   light = analogRead(LIGHT_SENSOR_PIN);
 }
 
+//Go target pos if the currPos is not target pos.
+void updatePos(){
+  int diff = targetPos - currPos;
+  unsigned wait_time = stepper.nextAction();                //Ignore the return value because the encoder can track the position
+  if(abs(diff) > 10){
+    stepper.enable();
+    stepper.startMove(diff * MOTOR_STEPS * MICROSTEPS);     // in microsteps
+  } else{
+    stepper.stop();
+    stepper.disable();
+  }
+}
+//Set the target position of the shade. If pos is out of bound, target pos will be the respective bounds.
+void setTargetPos(int pos){
+  if(pos > maxPos)
+    targetPos = maxPos;
+  else if (pos < minPos)
+    targetPos = minPos;
+  else{
+    targetPos = pos;
+  }
+}
+
+//Change the pos incrementally. If diff is < 0, the change is in reverse direction. This fuction is mechanically safe (bound protected).
+void incPos(int diff){
+  setTargetPos(currPos + diff);
+}
+
+void setup() {
+  Serial.begin(9600);
+  //Setup wireless communication
+  setUpCommunication();
+
+  //Setup encoder
+  pinMode(ENCODER_A_PIN, INPUT_PULLUP);
+  pinMode(ENCODER_B_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(ENCODER_A_PIN), pinAHandler, FALLING);
+
+  //Setup light sensor
+  tickerMeasureLight.attach(0.5, updateLight);
+
+  //Setup stepper
+  stepper.begin(30, MICROSTEPS);
+  stepper.setEnableActiveState(LOW);
+}
 void loop() {
   tcpReceive();
-  //New message structure [A single command char][an four digit number decoded in ASCII]
-  // int val = getLight();
-  // Serial.printf("g2%04d\n", val);
-  // client.printf("g2%04d", val);
-  // delay(100);
+  updatePos();
 }
+
+
