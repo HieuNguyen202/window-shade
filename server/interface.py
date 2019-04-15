@@ -43,7 +43,7 @@ class Node(QObject):
     newLightUpperLimit = pyqtSignal(int)
     newPosLowerLimit = pyqtSignal(int)
     newLightLowerLimit = pyqtSignal(int)
-    newCalibrate = pyqtSignal(int)
+    newCalibrateStatus = pyqtSignal(int)
     newSetPos = pyqtSignal(int)
     newSetLight = pyqtSignal(int)
     newSetModeSensor = pyqtSignal(int)
@@ -51,6 +51,14 @@ class Node(QObject):
     newSetMinPos = pyqtSignal(int)
     newSetMaxPos = pyqtSignal(int)
     newStep = pyqtSignal(int)
+
+    CAL_STATUS_SUCCESSFUL = 0
+    CAL_STATUS_TIMEOUT = 1
+    CAL_STATUS_LIMIT_NOT_SET = 2
+    CAL_STATUS_IN_STAGE0 = 3
+    CAL_STATUS_IN_STAGE1 = 4
+    CAL_STATUS_IN_STAGE2 = 5
+    CAL_STATUS_IN_STAGE3 = 6
 
     def __init__(self, tcpClient):
         super(Node, self).__init__()
@@ -110,8 +118,16 @@ class Node(QObject):
                 else:
                     print('Unknown input:', input)
             elif input[0] == 'c':
-                status = input[MESSAGE_LENGTH - 1]  #last digit
-                self.newCalibrate.emit(int(status))
+                val = int(input[2:])
+                if input[1] == '0':
+                    self.newCalibrateStatus.emit(val)
+                if input[1] == '1':
+                    self.newPos.emit(val)
+                elif input[1] == '2':
+                    self.newLight.emit(val)
+                else:
+                    print('Unknown input:', input)
+
             elif input[0] == 's':
                 val = int(input[2:])
                 if input[1] == '1':
@@ -166,8 +182,8 @@ class Node(QObject):
     def getLightLowerLimit(self):
         self.write(self.combine("g8", 0))
 
-    def calibrate(self):
-        self.write(self.combine("c0", 0))
+    def calibrate(self, timeout):
+        self.write(self.combine("c0", timeout))
 
     def setPos(self, pos):
         self.write(self.combine("s1", pos))
@@ -206,7 +222,7 @@ class CLINode(Node):
         self.newLightUpperLimit.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newLightUpperLimit(", val,")"))
         self.newPosLowerLimit.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPosLowerLimit(", val,")"))
         self.newLightLowerLimit.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newLightLowerLimit(", val,")"))
-        self.newCalibrate.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newCalibrate(", val,")"))
+        self.newCalibrateStatus.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newCalibrate(", val, ")"))
         self.newSetPos.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetPos(", val,")"))
         self.newSetLight.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetLight(", val,")"))
         self.newSetModeSensor.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetModeSensor(", val,")"))
@@ -234,7 +250,7 @@ class GUINode(Node):
         self.newLightUpperLimit.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newLightUpperLimit(", val,")"))
         self.newPosLowerLimit.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPosLowerLimit(", val,")"))
         self.newLightLowerLimit.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newLightLowerLimit(", val,")"))
-        self.newCalibrate.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newCalibrate(", val,")"))
+        self.newCalibrateStatus.connect(self.newCalibrateStatusHandler)
         self.newSetPos.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetPos(", val,")"))
         self.newSetLight.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetLight(", val,")"))
         self.newSetModeSensor.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetModeSensor(", val,")"))
@@ -245,10 +261,30 @@ class GUINode(Node):
 
         ui.btnSetMinPos.pressed.connect(self.setMinPos)
         ui.btnSetMaxPos.pressed.connect(self.setMaxPos)
+        ui.btnCalibrate.pressed.connect(lambda: self.calibrate(20))
 
         # self.buttonDeliver.pressed.connect(lambda: self.buttonDeliverPressed.emit(self.slider.slider.value()))
         ui.btnUp.pressed.connect(lambda: self.step(100))
         ui.btnDown.pressed.connect(lambda: self.step(-100))
+
+    def newCalibrateStatusHandler(self, status):
+        if (status == self.CAL_STATUS_SUCCESSFUL):
+            print("Calibration Status: CAL_STATUS_SUCCESSFUL")
+        elif (status == self.CAL_STATUS_TIMEOUT):
+            print("Calibration Status: CAL_STATUS_TIMEOUT")
+        elif (status == self.CAL_STATUS_LIMIT_NOT_SET):
+            print("Calibration Status: CAL_STATUS_LIMIT_NOT_SET")
+        elif (status == self.CAL_STATUS_IN_STAGE0):
+            print("Calibration Status: CAL_STATUS_IN_STAGE0")
+        elif (status == self.CAL_STATUS_IN_STAGE1):
+            print("Calibration Status: CAL_STATUS_IN_STAGE1")
+        elif (status == self.CAL_STATUS_IN_STAGE2):
+            print("Calibration Status: CAL_STATUS_IN_STAGE2")
+        elif (status == self.CAL_STATUS_IN_STAGE3):
+            print("Calibration Status: CAL_STATUS_IN_STAGE3")
+        else:
+            print("Calibration Status: UNKNOWN")
+
     def updatePosSlider(self, max):
         self.ui.updatePosSlider(max)
         self.ui.sliderPos.slider.sliderReleased.connect(lambda: self.setPos(self.ui.sliderPos.slider.value()))
