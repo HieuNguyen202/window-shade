@@ -400,8 +400,8 @@ void updatePos() {
                              // track the position
   if (doHoldPos) {
     if (abs(diff) > POS_TOLERANCE) {
-      stepper.enable();
       if (stepper.getStepsRemaining() < abs(diff)) {
+        stepper.enable();
         stepper.startMove(diff * MOTOR_STEPS * MICROSTEPS);  // in microsteps
       }
     } else {
