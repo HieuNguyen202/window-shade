@@ -6,6 +6,7 @@ SHADE_POS = 'p'
 SET_SHADE_POS = 'p'
 import struct
 from enum import Enum
+from graphics import *
 
 """Get the IP address of the host computer."""
 def getIPAddress():
@@ -57,6 +58,7 @@ class Node(QObject):
     newSetMaxPos = pyqtSignal(int)
     newSetStepIncrement = pyqtSignal(int)
     newPosAndLight = pyqtSignal(int, int)
+    newLivePosAndLight = pyqtSignal(int, int)
 
     CAL_STATUS_SUCCESSFUL = 0
     CAL_STATUS_TIMEOUT = 1
@@ -123,8 +125,9 @@ class Node(QObject):
             elif command == Commands.CMD_SET_MAX_POS.value: self.newSetMaxPos.emit(value1)
             elif command == Commands.CMD_SET_STEP_INCREMENT.value: self.newSetStepIncrement.emit(value1)
             elif command == Commands.CMD_CALIBRATE.value: self.newCalibrateStatus.emit(value1)
+            elif command == Commands.CMD_GET_LIVE_POS_AND_LIGHT.value: self.newLivePosAndLight.emit(value1, value2)
             else: print("Unknown message: ", message)
-                
+
 
     def tcpClientAttached(self):
         print("Need to implement tcpClientAttached")
@@ -137,6 +140,9 @@ class Node(QObject):
 
     def getPos(self):
         self.write(Commands.CMD_GET_POS, 0, 0)
+
+    def getLivePosAndLight(self, on, intervalMilis):
+        self.write(Commands.CMD_GET_LIVE_POS_AND_LIGHT, on, intervalMilis)
 
     def getLight(self):
         self.write(Commands.CMD_GET_LIGHT, 0, 0)
@@ -203,7 +209,7 @@ class CLINode(Node):
 
 """An Node implementation that is used in a command line interface. Used in computer with no graphics"""
 class GUINode(Node):
-    def __init__(self, tcpClient, ui):
+    def __init__(self, tcpClient, ui:NodeWidget):
         super(GUINode, self).__init__(tcpClient)
         self.ui = ui
         self.newPos.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPos(", val,")"))
@@ -222,16 +228,30 @@ class GUINode(Node):
         self.newSetMinPos.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetMinPos(", val,")"))
         self.newSetMaxPos.connect(self.updatePosSlider)
         self.newSetStepIncrement.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newStep(", val, ")"))
-        self.newPosAndLight.connect(lambda pos, light: print(self.tcpClient.peerAddress().toString() + ": newPosAndLight(", pos,",",light, ")"))
+        self.newPosAndLight.connect(self.ui.plot.append)
         self.newGetState.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newGetState(", val,")"))
+        self.newLivePosAndLight.connect(self.ui.plot.setLivePoint)
 
         ui.btnSetMinPos.pressed.connect(self.setMinPos)
         ui.btnSetMaxPos.pressed.connect(self.setMaxPos)
-        ui.btnCalibrate.pressed.connect(lambda: self.calibrate(timeout=20, numInterval=20))
+
+        ui.btnCalibrate.pressed.connect(self.ui.plot.clean)
+        ui.btnCalibrate.pressed.connect(lambda: self.calibrate(timeout=20, numInterval=100))
+
+        ui.btnLive.pressed.connect(self.liveBtnHandler)
 
         # self.buttonDeliver.pressed.connect(lambda: self.buttonDeliverPressed.emit(self.slider.slider.value()))
         ui.btnUp.pressed.connect(lambda: self.step(50))
         ui.btnDown.pressed.connect(lambda: self.step(-50))
+
+    def liveBtnHandler(self):
+        if self.ui.btnLive.text() == "Live On": #live
+            self.getLivePosAndLight(on=1, intervalMilis=100)
+            self.ui.btnLive.setText("Live Off")
+        else:   #Not Live
+            self.getLivePosAndLight(on=0, intervalMilis=0)
+            self.ui.plot.cleanLive()
+            self.ui.btnLive.setText("Live On")
 
     def newCalibrateStatusHandler(self, status):
         if (status == self.CAL_STATUS_SUCCESSFUL):
@@ -263,11 +283,11 @@ class GUINode(Node):
 
     def socketError(self, status):
         print(self.tcpClient.peerAddress().toString()+": setSharePos(",status,").")
-        
+
 class Commands(Enum):
     CMD_GET_STATE = 0
     CMD_GET_POS = 1
-    CMD_GET_LIGHT = 2 
+    CMD_GET_LIGHT = 2
     CMD_GET_POS_AND_LIGHT = 3
     CMD_GET_MAX_POS = 4
     CMD_GET_MAX_LIGHT = 5
@@ -281,3 +301,4 @@ class Commands(Enum):
     CMD_SET_MAX_POS = 13
     CMD_SET_STEP_INCREMENT = 14
     CMD_CALIBRATE = 15
+    CMD_GET_LIVE_POS_AND_LIGHT = 16

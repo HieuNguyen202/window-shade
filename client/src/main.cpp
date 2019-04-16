@@ -49,6 +49,7 @@ enum Commands {
   CMD_SET_MAX_POS,
   CMD_SET_STEP_INCREMENT,  // or negative means decrement
   CMD_CALIBRATE,
+  CMD_GET_LIVE_POS_AND_LIGHT,
 };
 
 enum calibration_status {
@@ -100,6 +101,7 @@ struct CalibrationProfile {
 A4988 stepper(MOTOR_STEPS, MOTOR_DIR_PIN, MOTOR_STEP_PIN, MOTOR_ENABLE_PIN,
               MOTOR_MS1, MOTOR_MS2, MOTOR_MS3);
 bool doHoldPos = false;
+bool isLive = false;
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 volatile long counter = 0;
 
@@ -125,6 +127,7 @@ int light = 0;
 
 State currState = STATE_IDLE;
 Ticker tickerMeasureLight;
+Ticker tickerLivePosAndLight;
 
 // Handler for encoder counts
 void IRAM_ATTR pinAHandler() {
@@ -178,6 +181,14 @@ void sendPosAndLight(mea_t mea) {
   oMsg.value2 = mea.light;
   writeToServer();
 }
+
+void sendLivePosAndLight() {
+  oMsg.commmand = CMD_GET_LIVE_POS_AND_LIGHT;
+  oMsg.value1 = currPos;
+  oMsg.value2 = light;
+  writeToServer();
+}
+
 void sendPos(int pos) {
   oMsg.commmand = CMD_GET_POS_AND_LIGHT;
   oMsg.value1 = pos;
@@ -347,6 +358,18 @@ void tcpReceive() {
           cProfile.timeout = iMsg.value1;
           cProfile.numInterval = iMsg.value2;
           changeState(STATE_CAL_0);
+          break;
+        case CMD_GET_LIVE_POS_AND_LIGHT:
+          if(iMsg.value1){
+            tickerMeasureLight.detach();
+            tickerMeasureLight.attach((float)iMsg.value2/1000, updateLight);
+            tickerLivePosAndLight.detach();
+            tickerLivePosAndLight.attach((float)iMsg.value2/1000, sendLivePosAndLight);
+          } else {
+            tickerLivePosAndLight.detach();
+            tickerMeasureLight.detach();
+            tickerMeasureLight.attach(DEFAULT_LIGHT_UPDATE_PERIOD_SECOND, updateLight);
+          }
           break;
         default:
           Serial.printf("tcpReceive: Unknown command\n");

@@ -1,5 +1,6 @@
 from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 from pyqtgraph import PlotWidget
+import pyqtgraph as pg
 
 import collections
 import random
@@ -71,16 +72,38 @@ class DynamicPlotWidget(PlotWidget):
         self._interval = int(sampleinterval*1000)
         self._bufsize = int(timewindow/sampleinterval)
         self.databuffer = collections.deque([0.0]*self._bufsize, self._bufsize)
-        self.x = np.linspace(-timewindow, 0.0, self._bufsize)
-        self.y = np.zeros(self._bufsize, dtype=np.float)
+
+        # self.x = np.linspace(-timewindow, 0.0, self._bufsize)
+        # self.y = np.zeros(self._bufsize, dtype=np.float)
+        self.x = list()
+        self.y = list()
 
         # PyQtGraph stuff
         self.resize(*size)
         self.showGrid(x=True, y=True)
         self.setLabel('left', 'amplitude', 'V')
         self.setLabel('bottom', 'time', 's')
+        self.curve = pg.ScatterPlotItem(self.x, self.y, pen=(255,0,0))
+        self.liveCurve = pg.ScatterPlotItem(pen='w', brush='w', size=20)
+        self.addItem(self.curve)
+        self.addItem(self.liveCurve)
 
-        self.curve = self.plot(self.x, self.y, pen=(255,0,0))
+    def setLivePoint(self, x, y):
+        self.liveCurve.show()
+        self.liveCurve.setData([x], [y])
+
+    def cleanLive(self):
+        self.liveCurve.hide()
+
+    def append(self, x, y):
+        self.x.append(x)
+        self.y.append(y)
+        self.curve.setData(self.x, self.y)
+
+    def clean(self):
+        self.x = list()
+        self.y = list()
+        self.curve.setData(self.x, self.y)
 
     def appendData(self, data):
         self.databuffer.append(data)
@@ -132,6 +155,7 @@ class NodeWidget(QtWidgets.QWidget):
         self.btnSetMinPos =     QtWidgets.QPushButton("Set Min Pos")
         self.btnCalibrate =     QtWidgets.QPushButton("Calibrate")
         self.btnShowHidePlot =  QtWidgets.QPushButton("Plot")
+        self.btnLive =  QtWidgets.QPushButton("Live On")
 
         self.sliderPos = None
         self.sliderLight = SliderWidget("Light")
@@ -147,6 +171,7 @@ class NodeWidget(QtWidgets.QWidget):
         self.layout.addWidget(self.btnSetMinPos, 3, 2)
         self.layout.addWidget(self.btnCalibrate, 4, 1)
         self.layout.addWidget(self.btnShowHidePlot, 4, 2)
+        self.layout.addWidget(self.btnLive, 5, 1)
 
         # self.buttonDeliver.pressed.connect(lambda: self.buttonDeliverPressed.emit(self.slider.slider.value()))
         # self.buttonBack.pressed.connect(lambda: self.buttonBackPressed.emit(-self.slider.slider.value()))
