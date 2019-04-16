@@ -2,7 +2,7 @@
 #include <Ticker.h>
 #include <WiFi.h>
 #include "A4988.h"
-#define MESSAGE_LENGTH 7  // including one byte checksum
+#define MESSAGE_LENGTH 6  // including one byte checksum
 
 #define MOTOR_STEPS 200
 #define MOTOR_ENABLE_PIN 27
@@ -29,6 +29,27 @@
 #define DEFAULT_LIGHT_UPDATE_PERIOD_SECOND 0.5
 
 #define POS_TOLERANCE 5
+
+#define PULSES_PER_STEP 1
+
+enum Commands {
+  CMD_GET_STATE,
+  CMD_GET_POS,
+  CMD_GET_LIGHT,
+  CMD_GET_POS_AND_LIGHT,
+  CMD_GET_MAX_POS,
+  CMD_GET_MAX_LIGHT,
+  CMD_GET_MIN_POS,
+  CMD_GET_MIN_LIGHT,
+  CMD_GET_LOWER_BOUND_POS_AND_LIGHT,
+  CMD_GET_UPPER_BOUND_POS_AND_LIGHT,
+  CMD_SET_POS,
+  CMD_SET_LIGHT,
+  CMD_SET_MIN_POS,
+  CMD_SET_MAX_POS,
+  CMD_SET_STEP_INCREMENT,  // or negative means decrement
+  CMD_CALIBRATE,
+};
 
 enum calibration_status {
   CAL_STATUS_SUCCESSFUL,
@@ -57,10 +78,19 @@ struct Measurement {
 };
 typedef struct Measurement mea_t;
 
+struct Message {
+  uint16_t commmand;
+  int16_t value1;
+  int16_t value2;
+};
+
+struct Message oMsg;
+struct Message iMsg;
+
 struct CalibrationProfile {
   int timeout;
   unsigned long timeoutMilis;
-  char dataIn[2];
+  int numInterval;
   int meaInterval;
   int midPos;
   mea_t mea;
@@ -84,11 +114,12 @@ char dataOut[MESSAGE_LENGTH + 1];  // Nul char to terminate the string
 volatile int currPos = 0;
 int maxPos = DEFAULT_MAX_POS, minPos = DEFAULT_MIN_POS, targetPos = 0;
 
-void incPos(int diff);
+void incPos(int16_t diff);
 int setPos(int pos);
 void setTargetPos(int pos);
 void updatePos();
 void updateLight();
+void writeToServer();
 
 int light = 0;
 
@@ -128,6 +159,38 @@ void setUpCommunication() {
   }
 }
 
+void sendCalibrationStatus(calibration_status s) {
+  oMsg.commmand = CMD_CALIBRATE;
+  oMsg.value1 = s;
+  oMsg.value2 = 0;
+  writeToServer();
+}
+void changeState(State s) {
+  currState = s;
+  oMsg.commmand = CMD_GET_STATE;
+  oMsg.value1 = s;
+  oMsg.value2 = 0;
+  writeToServer();
+}
+void sendPosAndLight(mea_t mea) {
+  oMsg.commmand = CMD_GET_POS_AND_LIGHT;
+  oMsg.value1 = mea.pos;
+  oMsg.value2 = mea.light;
+  writeToServer();
+}
+void sendPos(int pos) {
+  oMsg.commmand = CMD_GET_POS_AND_LIGHT;
+  oMsg.value1 = pos;
+  oMsg.value2 = 0;
+  writeToServer();
+}
+void send(uint16_t command, int16_t value1, int16_t value2) {
+  oMsg.commmand = command;
+  oMsg.value1 = value1;
+  oMsg.value2 = value2;
+  writeToServer();
+}
+
 // Calibration
 // dataIn is used to get the message header to response
 void calibrate() {
@@ -135,30 +198,27 @@ void calibrate() {
     Serial.printf(
         "tcpReceive: Begin calibration with timeout = %d seconds (STAGE0)\n",
         cProfile.timeout);
-    client.printf("%c%c%05d", cProfile.dataIn[0], cProfile.dataIn[1],
-                  CAL_STATUS_IN_STAGE0);
+    sendCalibrationStatus(CAL_STATUS_IN_STAGE0);
     if (cProfile.timeout <= 0) {  // Bad input, calibaration is not started.
       Serial.printf(
           "tcpReceive: Calibration failed because timeout (%d seconds) <= 0\n",
           cProfile.timeout);
-      client.printf("%c%c%05d", cProfile.dataIn[0], cProfile.dataIn[1],
-                    CAL_STATUS_TIMEOUT);  // timout input <= 0
-      currState = STATE_IDLE;
+      sendCalibrationStatus(CAL_STATUS_TIMEOUT);
+      changeState(STATE_IDLE);
       return;  // Abort
     }
     if (minPos == DEFAULT_MIN_POS ||
         maxPos == DEFAULT_MAX_POS) {  // Check if pos limits are set
       Serial.printf("tcpReceive: Calibration failed, limit not set.\n");
-      client.printf("%c%c%05d", cProfile.dataIn[0], cProfile.dataIn[1],
-                    CAL_STATUS_LIMIT_NOT_SET);
-      currState = STATE_IDLE;
+      sendCalibrationStatus(CAL_STATUS_LIMIT_NOT_SET);
+      changeState(STATE_IDLE);
       return;  // Abort
     }
     cProfile.timeoutMilis = cProfile.timeout * 1000;
     cProfile.midPos = (minPos + maxPos) / 2;
     cProfile.meaInterval =
         (maxPos - minPos) /
-        DEFAULT_NUM_CAL_INTERVALS;  // how often to take measuremnts
+        cProfile.numInterval;  // how often to take measuremnts
 
     // Increase light update frequency
     tickerMeasureLight.detach();
@@ -166,18 +226,15 @@ void calibrate() {
 
     // Send a initial set of measurement
     cProfile.mea = {currPos, light};
-
     cProfile.startTime = millis();
-    currState = STATE_CAL_1;
     Serial.printf("tcpReceive: Calibration entering STATE_CAL_1.\n");
-    client.printf("%c%c%05d", 't', '0', STATE_CAL_1);
+    changeState(STATE_CAL_1);
   } else {
     if (millis() - cProfile.startTime > cProfile.timeoutMilis) {
       // Timeout
       Serial.printf("tcpReceive: Calibration timed out.\n");
-      client.printf("%c%c%05d", dataIn[0], dataIn[1],
-                    CAL_STATUS_TIMEOUT);  // timed out
-      currState = STATE_IDLE;
+      sendCalibrationStatus(CAL_STATUS_TIMEOUT);
+      changeState(STATE_IDLE);
     } else {
       // STAGE0: setup
       // STAGE0: Calibration started, need to go to minPos
@@ -191,30 +248,24 @@ void calibrate() {
       {
         // Send a new set of measuremnts
         cProfile.mea = {currPos, light};
-        client.printf("%c%c%05d", dataIn[0], '1',
-                      cProfile.mea.pos);  // send pos
-        client.printf("%c%c%05d", dataIn[0], '2',
-                      cProfile.mea.light);  // send light
+        sendPosAndLight(cProfile.mea);
       }
-
       // Check and update the stages
       if (currState == STATE_CAL_1) {
         if (abs(currPos - minPos) >
             POS_TOLERANCE) {     // Not arrived at minPos yet
           setTargetPos(minPos);  // Go to minPos
         } else {                 // Arrived at minPos
-          currState = STATE_CAL_2;
+          changeState(STATE_CAL_2);
           Serial.printf("tcpReceive: Calibration entering STATE_CAL_2.\n");
-          client.printf("%c%c%05d", 't', '0', STATE_CAL_2);
         }
       } else if (currState == STATE_CAL_2) {
         if (abs(currPos - maxPos) > POS_TOLERANCE)  // Not arrived at maxPos yet
         {
           setTargetPos(maxPos);  // Go to maxPos
         } else {                 // Arrived at maxPos
-          currState = STATE_CAL_3;
+          changeState(STATE_CAL_3);
           Serial.printf("tcpReceive: Calibration entering STATE_CAL_3.\n");
-          client.printf("%c%c%05d", 't', '0', STATE_CAL_3);
         }
       } else if (currState == STATE_CAL_3) {
         if (abs(currPos - cProfile.midPos) >
@@ -223,17 +274,13 @@ void calibrate() {
           setTargetPos(cProfile.midPos);  // Go to midPos
         } else                            // Arrived at midPos
         {
-          currState = STATE_IDLE;
+          changeState(STATE_IDLE);
           // Change light update period back to default values
           tickerMeasureLight.detach();
           tickerMeasureLight.attach(DEFAULT_LIGHT_UPDATE_PERIOD_SECOND,
                                     updateLight);
-          Serial.printf("tcpReceive: Calibration entering STATE_CAL_3.\n");
-          client.printf("%c%c%05d", 't', '0', STATE_IDLE);
-
           Serial.printf("tcpReceive: Calibration finished.\n");
-          client.printf("%c%c%05d", dataIn[0], dataIn[1],
-                        CAL_STATUS_SUCCESSFUL);  // succeeded
+          sendCalibrationStatus(CAL_STATUS_SUCCESSFUL);
         }
       }
     }
@@ -242,150 +289,70 @@ void calibrate() {
 
 // Receive and execute a command from server
 void tcpReceive() {
-  if (client.connected()) {
-    // Receive message
-    int val, ret;
-    while (client.available() >= MESSAGE_LENGTH) {
-      client.readBytes(dataIn, MESSAGE_LENGTH);  // Read new message
-      switch (dataIn[0]) {
-        case 'g':
-          switch (dataIn[1]) {
-            case '0':
-              Serial.printf("Need to implement %s\n", dataIn);
-              break;
-            case '1':
-              Serial.printf("Need to implement %s\n", dataIn);
-              break;
-            case '2':
-              Serial.printf("Need to implement %s\n", dataIn);
-              break;
-            case '3':
-              Serial.printf("Need to implement %s\n", dataIn);
-              break;
-            case '4':
-              Serial.printf("Need to implement %s\n", dataIn);
-              break;
-            case '5':
-              Serial.printf("Need to implement %s\n", dataIn);
-              break;
-            case '6':
-              Serial.printf("Need to implement %s\n", dataIn);
-              break;
-            case '7':
-              Serial.printf("Need to implement %s\n", dataIn);
-              break;
-            case '8':
-              Serial.printf("Need to implement %s\n", dataIn);
-              break;
-            default:
-              Serial.printf("tcpReceive: Unknown command %s", dataIn);
-              break;
-          }
+  if (!client.connected()) {  // Connection failed
+    Serial.printf("Wifi connection failed with status %d.\n", WiFi.status());
+  } else {  // Receive message
+    while (client.available() >= sizeof(iMsg)) {
+      client.readBytes((byte *)&iMsg, sizeof(iMsg));  // Read new message
+      switch (iMsg.commmand) {
+        case CMD_GET_STATE:
           break;
-        case 'c':
-          val = atoi(&dataIn[2]);
-          switch (dataIn[1]) {
-            case '0':  // calibrate(int timeout)
-              cProfile.timeout = val;
-              cProfile.dataIn[0] = dataIn[0];
-              cProfile.dataIn[1] = dataIn[1];
-              currState = STATE_CAL_0;
-              break;
-            case '1':
-              Serial.printf("Need to implement %s\n", dataIn);
-              break;
-            case '2':
-              Serial.printf("Need to implement %s\n", dataIn);
-              break;
-            case '3':
-              Serial.printf("Need to implement %s\n", dataIn);
-              break;
-            case '4':
-              Serial.printf("Need to implement %s\n", dataIn);
-              break;
-            case '5':
-              Serial.printf("Need to implement %s\n", dataIn);
-              break;
-            case '6':
-              Serial.printf("Need to implement %s\n", dataIn);
-              break;
-            case '7':
-              Serial.printf("Need to implement %s\n", dataIn);
-              break;
-            case '8':
-              Serial.printf("Need to implement %s\n", dataIn);
-              break;
-            default:
-              Serial.printf("tcpReceive: Unknown command %s", dataIn);
-              break;
-          }
+        case CMD_GET_POS:
           break;
-        case 's':
-          val = atoi(&dataIn[2]);
-          switch (dataIn[1]) {
-            case '0':
-              Serial.printf("Need to implement %s\n", dataIn);
-              break;
-            case '1':  // setPos(pos)
-              setTargetPos(val);
-              currState = STATE_POS_PERSUIT;
-              Serial.printf("Target Pos: %d - Current Pos: %d\n", targetPos,
-                            currPos);
-              client.printf("%c%c%05d", dataIn[0], dataIn[1],
-                            currPos);  // response with the same command header
-                                       // and the actual steps.
-              break;
-            case '2':
-              Serial.printf("Need to implement %s\n", dataIn);
-              break;
-            case '3':
-              Serial.printf("Need to implement %s\n", dataIn);
-              break;
-            case '4':
-              Serial.printf("Need to implement %s\n", dataIn);
-              break;
-            case '5':  // setMinPos()
-              minPos = 0;
-              currPos = 0;
-              targetPos = 0;
-              currState = STATE_POS_PERSUIT;
-              client.printf("%c%c%05d", dataIn[0], dataIn[1],
-                            minPos);  // response with the same command header
-                                      // and the actual steps.
-              Serial.printf("setMinPos(%d)\n", minPos);
-              break;
-            case '6':  // setMaxPos()
-              maxPos = currPos;
-              client.printf("%c%c%05d", dataIn[0], dataIn[1],
-                            maxPos);  // response with the same command header
-                                      // and the actual steps.
-              Serial.printf("setMaxPos(%d)\n", maxPos);
-              break;
-            case '7':  // step(steps)
-              // Serial.printf("Counter before: %d\n", currPos);
-              incPos(val);
-              currState = STATE_POS_PERSUIT;
-              client.printf("%c%c%05d", dataIn[0], dataIn[1],
-                            currPos);  // response with the same command header
-                                       // and the actual steps.
-              // Serial.printf("steps(%d)\n", val);
-              // Serial.printf("Counter after: %d\n", currPos);
-              break;
-            case '8':
-              Serial.printf("Need to implement %s\n", dataIn);
-              break;
-            default:
-              Serial.printf("tcpReceive: Unknown command %s", dataIn);
-              break;
-          }
+        case CMD_GET_LIGHT:
+          break;
+        case CMD_GET_POS_AND_LIGHT:
+          break;
+        case CMD_GET_MAX_POS:
+          break;
+        case CMD_GET_MAX_LIGHT:
+          break;
+        case CMD_GET_MIN_POS:
+          break;
+        case CMD_GET_MIN_LIGHT:
+          break;
+        case CMD_GET_LOWER_BOUND_POS_AND_LIGHT:
+          break;
+        case CMD_GET_UPPER_BOUND_POS_AND_LIGHT:
+          break;
+        case CMD_SET_POS:
+          setTargetPos(iMsg.value1);
+          currState = STATE_POS_PERSUIT;
+          Serial.printf("Target Pos: %d - Current Pos: %d\n", targetPos,
+                        currPos);
+          send(CMD_SET_POS, targetPos, 0);
+          break;
+        case CMD_SET_LIGHT:
+          break;
+        case CMD_SET_MIN_POS:
+          minPos = 0;
+          currPos = 0;
+          targetPos = 0;
+          currState = STATE_POS_PERSUIT;
+          send(CMD_SET_MIN_POS, minPos, 0);
+          Serial.printf("setMinPos(%d)\n", minPos);
+          break;
+        case CMD_SET_MAX_POS:
+          maxPos = currPos;
+          send(CMD_SET_MAX_POS, maxPos, 0);
+          Serial.printf("setMaxPos(%d)\n", maxPos);
+          break;
+        case CMD_SET_STEP_INCREMENT:  // or negative means decrement
+          incPos(iMsg.value1);
+          changeState(STATE_POS_PERSUIT);
+          Serial.printf("CMD_SET_STEP_INCREMENT(%d)\n", currPos);
+          send(CMD_SET_STEP_INCREMENT, targetPos, 0);
+          break;
+        case CMD_CALIBRATE:
+          cProfile.timeout = iMsg.value1;
+          cProfile.numInterval = iMsg.value2;
+          changeState(STATE_CAL_0);
           break;
         default:
-          Serial.printf("tcpReceive: Unknown command %s", dataIn);
+          Serial.printf("tcpReceive: Unknown command\n");
           break;
       }
     }
-  } else {  // Connection failed
-    Serial.printf("Wifi connection failed with status %d.\n", WiFi.status());
   }
 }
 
@@ -400,11 +367,12 @@ void updatePos() {
                              // track the position
   if (doHoldPos) {
     if (abs(diff) > POS_TOLERANCE) {
+      stepper.enable();
       if (stepper.getStepsRemaining() < abs(diff)) {
-        stepper.enable();
-        stepper.startMove(diff * MOTOR_STEPS * MICROSTEPS);  // in microsteps
+        stepper.startMove(diff * MICROSTEPS * PULSES_PER_STEP);  // in microsteps
       }
     } else {
+      Serial.printf("In CMD_SET_STEP_INCREMENT(%d)\n", currPos);
       stepper.stop();  // stop the previous move
       doHoldPos = false;
     }
@@ -427,7 +395,7 @@ void setTargetPos(int pos) {
 
 // Change the pos incrementally. If diff is < 0, the change is in reverse
 // direction. This fuction is mechanically safe (bound protected).
-void incPos(int diff) { setTargetPos(currPos + diff); }
+void incPos(int16_t diff) { setTargetPos(currPos + diff); }
 
 void setup() {
   Serial.begin(9600);
@@ -443,13 +411,15 @@ void setup() {
   tickerMeasureLight.attach(DEFAULT_LIGHT_UPDATE_PERIOD_SECOND, updateLight);
 
   // Setup stepper
-  stepper.begin(60, MICROSTEPS);
+  stepper.begin(100, MICROSTEPS);
   stepper.setEnableActiveState(LOW);
 }
 
+// Write the content of message m to server
+void writeToServer() { client.write((byte *)&oMsg, sizeof(oMsg)); }
+
 void loop() {
   tcpReceive();
-
   if (currState == STATE_IDLE) {
     doHoldPos = false;
     // Do something
@@ -457,7 +427,7 @@ void loop() {
     calibrate();
   } else if (currState == STATE_POS_PERSUIT) {
     if (abs(targetPos - currPos) < POS_TOLERANCE)
-      currState = STATE_IDLE;
+      changeState(STATE_IDLE);
     else
       doHoldPos = true;
   } else {

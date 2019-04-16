@@ -1,9 +1,11 @@
 from PyQt5.QtNetwork import QHostAddress, QTcpServer, QTcpSocket, QNetworkInterface, QAbstractSocket
 from PyQt5.QtCore import pyqtSignal, QObject
-MESSAGE_LENGTH = 7  #Including checksum
+MESSAGE_LENGTH = 6  #Including checksum
 LIGHT = 'l'
 SHADE_POS = 'p'
 SET_SHADE_POS = 'p'
+import struct
+from enum import Enum
 
 """Get the IP address of the host computer."""
 def getIPAddress():
@@ -39,18 +41,22 @@ class Node(QObject):
     newLight = pyqtSignal(int)
     newPosMax = pyqtSignal(int)
     newLightMax = pyqtSignal(int)
-    newPosUpperLimit = pyqtSignal(int)
+    newUpperBoundPosAndLight = pyqtSignal(int, int)
     newLightUpperLimit = pyqtSignal(int)
-    newPosLowerLimit = pyqtSignal(int)
+    newLowerBoundPosAndLight = pyqtSignal(int, int)
     newLightLowerLimit = pyqtSignal(int)
     newCalibrateStatus = pyqtSignal(int)
+    newGetState = pyqtSignal(int)
     newSetPos = pyqtSignal(int)
     newSetLight = pyqtSignal(int)
+    newGetMinLight = pyqtSignal(int)
     newSetModeSensor = pyqtSignal(int)
     newSetModeLight = pyqtSignal(int)
     newSetMinPos = pyqtSignal(int)
+    newGetMinPos = pyqtSignal(int)
     newSetMaxPos = pyqtSignal(int)
-    newStep = pyqtSignal(int)
+    newSetStepIncrement = pyqtSignal(int)
+    newPosAndLight = pyqtSignal(int, int)
 
     CAL_STATUS_SUCCESSFUL = 0
     CAL_STATUS_TIMEOUT = 1
@@ -90,64 +96,35 @@ class Node(QObject):
             raise ValueError
         return message
 
-    def write(self, message):
-        self.tcpClient.write(message.encode())
-        print("wrote", message)
+    def write(self, command, value1, value2):
+        self.tcpClient.write(struct.pack("Hhh", command.value, value1, value2))
+
 
     def newInput(self):
         while self.tcpClient.bytesAvailable() >= MESSAGE_LENGTH:
-            input = self.tcpClient.read(MESSAGE_LENGTH).decode()
-            if input[0] == 'g':
-                val = int(input[2:])
-                if input[1] == '1':
-                    self.newPos.emit(val)
-                elif input[1] == '2':
-                    self.newLight.emit(val)
-                elif input[1] == '3':
-                    self.newPosMax.emit(val)
-                elif input[1] == '4':
-                    self.newLightMax.emit(val)
-                elif input[1] == '5':
-                    self.newPosUpperLimit.emit(val)
-                elif input[1] == '6':
-                    self.newLightUpperLimit.emit(val)
-                elif input[1] == '7':
-                    self.newPosLowerLimit.emit(val)
-                elif input[1] == '8':
-                    self.newLightLowerLimit.emit(val)
-                else:
-                    print('Unknown input:', input)
-            elif input[0] == 'c':
-                val = int(input[2:])
-                if input[1] == '0':
-                    self.newCalibrateStatus.emit(val)
-                if input[1] == '1':
-                    self.newPos.emit(val)
-                elif input[1] == '2':
-                    self.newLight.emit(val)
-                else:
-                    print('Unknown input:', input)
-
-            elif input[0] == 's':
-                val = int(input[2:])
-                if input[1] == '1':
-                    self.newSetPos.emit(val)
-                elif input[1] == '2':
-                    self.newSetLight.emit(val)
-                elif input[1] == '3':
-                    self.newSetModeSensor.emit(val)
-                elif input[1] == '4':
-                    self.newSetModeLight.emit(val)
-                elif input[1] == '5':
-                    self.newSetMinPos.emit(val)
-                elif input[1] == '6':
-                    self.newSetMaxPos.emit(val)
-                elif input[1] == '7':
-                    self.newStep.emit(val)
-                else:
-                    print('Unknown input:', input)
-            else:
-                print('Unknown input:', input)
+            raw = self.tcpClient.read(MESSAGE_LENGTH)
+            message = struct.unpack('Bhh', raw)
+            command = message[0]
+            value1 = message[1]
+            value2 = message[2]
+            if   command == Commands.CMD_GET_STATE.value: self.newGetState.emit(value1)
+            elif command == Commands.CMD_GET_POS.value: self.newPos.emit(value1)
+            elif command == Commands.CMD_GET_LIGHT.value: self.newLight.emit(value1)
+            elif command == Commands.CMD_GET_POS_AND_LIGHT.value: self.newPosAndLight.emit(value1, value2) #pos, light
+            elif command == Commands.CMD_GET_MAX_POS.value: self.newPosMax.emit(value1)
+            elif command == Commands.CMD_GET_MAX_LIGHT.value: self.newLightMax.emit(value1)
+            elif command == Commands.CMD_GET_MIN_POS.value: self.newGetMinPos.emit(value1)
+            elif command == Commands.CMD_GET_MIN_LIGHT.value: self.newGetMinLight.emit(value1)
+            elif command == Commands.CMD_GET_LOWER_BOUND_POS_AND_LIGHT.value: self.newLowerBoundPosAndLight.emit(value1, value2)
+            elif command == Commands.CMD_GET_UPPER_BOUND_POS_AND_LIGHT.value: self.newUpperBoundPosAndLight.emit(value1, value2)
+            elif command == Commands.CMD_SET_POS.value: self.newSetPos.emit(value1)
+            elif command == Commands.CMD_SET_LIGHT.value: self.newSetLight.emit(value1)
+            elif command == Commands.CMD_SET_MIN_POS.value: self.newSetMinPos.emit(value1)
+            elif command == Commands.CMD_SET_MAX_POS.value: self.newSetMaxPos.emit(value1)
+            elif command == Commands.CMD_SET_STEP_INCREMENT.value: self.newSetStepIncrement.emit(value1)
+            elif command == Commands.CMD_CALIBRATE.value: self.newCalibrateStatus.emit(value1)
+            else: print("Unknown message: ", message)
+                
 
     def tcpClientAttached(self):
         print("Need to implement tcpClientAttached")
@@ -159,56 +136,43 @@ class Node(QObject):
         print("Need to implement connectionError")
 
     def getPos(self):
-        self.write(self.combine("g1", 0))
+        self.write(Commands.CMD_GET_POS, 0, 0)
 
     def getLight(self):
-        self.write(self.combine("g2", 0))
+        self.write(Commands.CMD_GET_LIGHT, 0, 0)
 
     def getPosMax(self):
-        self.write(self.combine("g3", 0))
+        self.write(Commands.CMD_GET_MAX_POS, 0, 0)
 
     def getLightMax(self):
-        self.write(self.combine("g4", 0))
+        self.write(Commands.CMD_GET_MAX_LIGHT, 0, 0)
 
-    def getPosUpperLimit(self):
-        self.write(self.combine("g5", 0))
+    def getUpperBoundPosAndLight(self):
+        self.write(Commands.CMD_GET_UPPER_BOUND_POS_AND_LIGHT, 0, 0)
 
-    def getLightUpperLimit(self):
-        self.write(self.combine("g6", 0))
+    def getMaxLight(self):
+        self.write(Commands.CMD_GET_MAX_LIGHT, 0, 0)
 
-    def getPosLowerLimit(self):
-        self.write(self.combine("g7", 0))
+    def getMinLight(self):
+        self.write(Commands.CMD_GET_MIN_LIGHT, 0, 0)
 
-    def getLightLowerLimit(self):
-        self.write(self.combine("g8", 0))
-
-    def calibrate(self, timeout):
-        self.write(self.combine("c0", timeout))
+    def calibrate(self, timeout, numInterval):
+        self.write(Commands.CMD_CALIBRATE, timeout, numInterval)
 
     def setPos(self, pos):
-        self.write(self.combine("s1", pos))
+        self.write(Commands.CMD_SET_POS, pos, 0)
 
     def setLight(self, light):
-        self.write(self.combine("s2", light))
+        self.write(Commands.CMD_SET_LIGHT, light, 0)
 
     def setMinPos(self):
-        self.write(self.combine("s5", 0))
+        self.write(Commands.CMD_SET_MIN_POS, 0, 0)
 
     def setMaxPos(self):
-        self.write(self.combine("s6", 0))
+        self.write(Commands.CMD_SET_MAX_POS, 0, 0)
 
     def step(self, steps):
-        self.write(self.combine("s7", steps))
-
-    """interval = 0: on demand
-    interval > 0: internal between messages in seconds"""
-    def setModeSensor(self, interval):
-        self.write(self.combine("s3", interval))
-
-    """interval = 0: on demand
-    interval > 0: internal between messages in seconds"""
-    def setModeLight(self, interval):
-        self.write(self.combine("s4", interval))
+        self.write(Commands.CMD_SET_STEP_INCREMENT, steps, 0)
 
 """An Node implementation that is used in a command line interface. Used in computer with no graphics"""
 class CLINode(Node):
@@ -218,9 +182,9 @@ class CLINode(Node):
         self.newLight.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newLight(", val,")"))
         self.newPosMax.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPosMax(", val,")"))
         self.newLightMax.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newLightMax(", val,")"))
-        self.newPosUpperLimit.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPosUpperLimit(", val,")"))
+        self.newUpperBoundPosAndLight.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPosUpperLimit(", val, ")"))
         self.newLightUpperLimit.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newLightUpperLimit(", val,")"))
-        self.newPosLowerLimit.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPosLowerLimit(", val,")"))
+        self.newLowerBoundPosAndLight.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPosLowerLimit(", val, ")"))
         self.newLightLowerLimit.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newLightLowerLimit(", val,")"))
         self.newCalibrateStatus.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newCalibrate(", val, ")"))
         self.newSetPos.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetPos(", val,")"))
@@ -246,9 +210,9 @@ class GUINode(Node):
         self.newLight.connect(self.ui.plot.appendData)
         self.newPosMax.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPosMax(", val,")"))
         self.newLightMax.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newLightMax(", val,")"))
-        self.newPosUpperLimit.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPosUpperLimit(", val,")"))
+        self.newUpperBoundPosAndLight.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPosUpperLimit(", val, ")"))
         self.newLightUpperLimit.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newLightUpperLimit(", val,")"))
-        self.newPosLowerLimit.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPosLowerLimit(", val,")"))
+        self.newLowerBoundPosAndLight.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPosLowerLimit(", val, ")"))
         self.newLightLowerLimit.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newLightLowerLimit(", val,")"))
         self.newCalibrateStatus.connect(self.newCalibrateStatusHandler)
         self.newSetPos.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetPos(", val,")"))
@@ -257,15 +221,17 @@ class GUINode(Node):
         self.newSetModeLight.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetModeLight(", val,")"))
         self.newSetMinPos.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetMinPos(", val,")"))
         self.newSetMaxPos.connect(self.updatePosSlider)
-        self.newStep.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newStep(", val,")"))
+        self.newSetStepIncrement.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newStep(", val, ")"))
+        self.newPosAndLight.connect(lambda pos, light: print(self.tcpClient.peerAddress().toString() + ": newPosAndLight(", pos,",",light, ")"))
+        self.newGetState.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newGetState(", val,")"))
 
         ui.btnSetMinPos.pressed.connect(self.setMinPos)
         ui.btnSetMaxPos.pressed.connect(self.setMaxPos)
-        ui.btnCalibrate.pressed.connect(lambda: self.calibrate(20))
+        ui.btnCalibrate.pressed.connect(lambda: self.calibrate(timeout=20, numInterval=20))
 
         # self.buttonDeliver.pressed.connect(lambda: self.buttonDeliverPressed.emit(self.slider.slider.value()))
-        ui.btnUp.pressed.connect(lambda: self.step(100))
-        ui.btnDown.pressed.connect(lambda: self.step(-100))
+        ui.btnUp.pressed.connect(lambda: self.step(50))
+        ui.btnDown.pressed.connect(lambda: self.step(-50))
 
     def newCalibrateStatusHandler(self, status):
         if (status == self.CAL_STATUS_SUCCESSFUL):
@@ -297,3 +263,21 @@ class GUINode(Node):
 
     def socketError(self, status):
         print(self.tcpClient.peerAddress().toString()+": setSharePos(",status,").")
+        
+class Commands(Enum):
+    CMD_GET_STATE = 0
+    CMD_GET_POS = 1
+    CMD_GET_LIGHT = 2 
+    CMD_GET_POS_AND_LIGHT = 3
+    CMD_GET_MAX_POS = 4
+    CMD_GET_MAX_LIGHT = 5
+    CMD_GET_MIN_POS = 6
+    CMD_GET_MIN_LIGHT = 7
+    CMD_GET_LOWER_BOUND_POS_AND_LIGHT = 8
+    CMD_GET_UPPER_BOUND_POS_AND_LIGHT = 9
+    CMD_SET_POS = 10
+    CMD_SET_LIGHT = 11
+    CMD_SET_MIN_POS = 12
+    CMD_SET_MAX_POS = 13
+    CMD_SET_STEP_INCREMENT = 14
+    CMD_CALIBRATE = 15
