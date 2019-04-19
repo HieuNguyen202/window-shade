@@ -50,6 +50,7 @@ enum Commands {
   CMD_SET_STEP_INCREMENT,  // or negative means decrement
   CMD_CALIBRATE,
   CMD_GET_LIVE_POS_AND_LIGHT,
+  CMD_RESET,
 };
 
 enum calibration_status {
@@ -371,7 +372,14 @@ void tcpReceive() {
             tickerMeasureLight.attach(DEFAULT_LIGHT_UPDATE_PERIOD_SECOND, updateLight);
           }
           break;
-        default:
+        case CMD_RESET:
+          maxPos = DEFAULT_MAX_POS;
+          minPos = DEFAULT_MIN_POS;
+          targetPos = 0;
+          currPos = 0;
+          changeState(STATE_IDLE);
+          break;
+          default:
           Serial.printf("tcpReceive: Unknown command\n");
           break;
       }
