@@ -1,5 +1,6 @@
 from PyQt5.QtNetwork import QHostAddress, QTcpServer, QTcpSocket, QNetworkInterface, QAbstractSocket
 from PyQt5.QtCore import pyqtSignal, QObject, QTimer
+from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 MESSAGE_LENGTH = 6  #Including checksum
 LIGHT = 'l'
 SHADE_POS = 'p'
@@ -103,7 +104,6 @@ class Node(QObject):
     def write(self, command, value1, value2):
         self.tcpClient.write(struct.pack("Hhh", command.value, value1, value2))
 
-
     def newInput(self):
         while self.tcpClient.bytesAvailable() >= MESSAGE_LENGTH:
             raw = self.tcpClient.read(MESSAGE_LENGTH)
@@ -129,7 +129,6 @@ class Node(QObject):
             elif command == Commands.CMD_CALIBRATE.value: self.newCalibrateStatus.emit(value1)
             elif command == Commands.CMD_GET_LIVE_POS_AND_LIGHT.value: self.newLivePosAndLight.emit(value1, value2)
             else: print("Unknown message: ", message)
-
 
     def tcpClientAttached(self):
         print("Need to implement tcpClientAttached")
@@ -214,10 +213,11 @@ class CLINode(Node):
 
 """An Node implementation that is used in a command line interface. Used in computer with no graphics"""
 class GUINode(Node):
-    def __init__(self, tcpClient, ui:NodeWidget):
+    closeBtnPressed = pyqtSignal(NodeWidget)
+    def __init__(self, tcpClient, nodeUI:NodeWidget):
         super(GUINode, self).__init__(tcpClient)
         ui.plot.plotItem.setTitle(tcpClient.peerAddress().toString())
-        self.ui = ui
+        self.nodeUI = nodeUI
         self.newPos.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPos(", val,")"))
         # self.newLight.connect(self.ui.plot.appendData)
         self.newPosMax.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPosMax(", val,")"))
@@ -234,10 +234,9 @@ class GUINode(Node):
         self.newSetMinPos.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetMinPos(", val,")"))
         self.newSetMaxPos.connect(self.updatePosSlider)
         self.newSetStepIncrement.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newStep(", val, ")"))
-        self.newPosAndLight.connect(self.ui.plot.append)
-        self.newGetState.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newGetState(", val,")"))
+        self.newPosAndLight.connect(self.nodeUI.plot.append)
+        self.newGetState.connect(self.nodeUI.state.changeState)
         self.newLivePosAndLight.connect(self.newLivePosAndLightHandler)
-
 
         ui.btnSetMinPos.pressed.connect(self.setMinPos)
         ui.btnSetMaxPos.pressed.connect(self.setMaxPos)
@@ -245,38 +244,45 @@ class GUINode(Node):
         ui.btnLive.pressed.connect(self.liveBtnHandler)
         ui.btnReset.pressed.connect(self.resetBtnHandler)
         ui.btnTimerOff.pressed.connect(self.timer.stop)
+        ui.btnDisconnect.pressed.connect(self.disconnectBtnHandler)
 
         # self.buttonDeliver.pressed.connect(lambda: self.buttonDeliverPressed.emit(self.slider.slider.value()))
-        ui.btnUp.pressed.connect(lambda: self.step(200))
-        ui.btnDown.pressed.connect(lambda: self.step(-200))
+        ui.btnUp.pressed.connect(lambda: self.step(int(ui.paramStep.value())))
+        ui.btnDown.pressed.connect(lambda: self.step(-int(ui.paramStep.value())))
 
     def newLivePosAndLightHandler(self, pos, light):
-        self.ui.plot.setLivePoint(x=pos, y=light)
+        self.nodeUI.plot.setLivePoint(x=pos, y=light)
         self.curPos = pos
         self.curLight = light
+
+    def disconnectBtnHandler(self):
+        self.tcpClient.disconnect()
+        self.detach()
+        print("closed")
+        self.closeBtnPressed.emit(self.nodeUI)
 
     def resetBtnHandler(self):
         self.reset()
 
     def calibrateBtnHandler(self):
-        self.ui.plot.show()
-        self.ui.plot.clean()
+        self.nodeUI.plot.show()
+        self.nodeUI.plot.clean()
         self.calibrate(timeout=20, numInterval=100)
 
     def liveBtnHandler(self):
-        if self.ui.btnLive.text() == "Live On": #live
-            self.ui.plot.liveCurve.show()
+        if self.nodeUI.btnLive.text() == "Live On": #live
+            self.nodeUI.plot.liveCurve.show()
             self.getLivePosAndLight(on=1, intervalMilis=100)
-            self.ui.btnLive.setText("Live Off")
+            self.nodeUI.btnLive.setText("Live Off")
         else:   #Not Live
-            self.ui.plot.liveCurve.hide()
+            self.nodeUI.plot.liveCurve.hide()
             self.getLivePosAndLight(on=0, intervalMilis=0)
-            self.ui.btnLive.setText("Live On")
+            self.nodeUI.btnLive.setText("Live On")
 
     def newCalibrateStatusHandler(self, status):
         if (status == self.CAL_STATUS_SUCCESSFUL):
-            print(min(self.ui.plot.y))
-            self.updateLightSlider(min(self.ui.plot.y), max(self.ui.plot.y))
+            print(min(self.nodeUI.plot.y))
+            self.updateLightSlider(min(self.nodeUI.plot.y), max(self.nodeUI.plot.y))
             print("Calibration Status: CAL_STATUS_SUCCESSFUL")
         elif (status == self.CAL_STATUS_TIMEOUT):
             print("Calibration Status: CAL_STATUS_TIMEOUT")
@@ -295,13 +301,13 @@ class GUINode(Node):
 
 
     def posSliderReleaseHandler(self):
-        val = self.ui.sliderPos.sl.value()      #current slider's value
+        val = self.nodeUI.sliderPos.sl.value()      #current slider's value
         self.setPos(val)                        #execution
-        self.ui.plot.setTargetPos(val)          #Display
+        self.nodeUI.plot.setTargetPos(val)          #Display
 
     def lightSliderReleaseHandler(self):
-        val = self.ui.sliderLight.sl.value()    #current slider's value
-        self.ui.plot.setTargetLight(val)        #Display
+        val = self.nodeUI.sliderLight.sl.value()    #current slider's value
+        self.nodeUI.plot.setTargetLight(val)        #Display
         #execution
         self.targetLight = val
         self.timer.setInterval(self.interval)
@@ -310,7 +316,7 @@ class GUINode(Node):
     def persuitLight(self):
         diff = self.curLight - self.targetLight
         if(abs(diff) < LIGHT_TOLERANCE):
-            self.ui.plot.setLivePointColor('y')
+            self.nodeUI.plot.setLivePointColor('y')
             self.timer.stop()
         else:
             step = int(diff * self.kp)
@@ -318,12 +324,12 @@ class GUINode(Node):
             self.step(-step)
 
     def updateLightSlider(self, min, max):
-        self.ui.updateLightSlider(min=min, max=max)
-        self.ui.sliderLight.sl.sliderReleased.connect(self.lightSliderReleaseHandler)
+        self.nodeUI.updateLightSlider(min=min, max=max)
+        self.nodeUI.sliderLight.sl.sliderReleased.connect(self.lightSliderReleaseHandler)
 
     def updatePosSlider(self, max):
-        self.ui.updatePosSlider(max)
-        self.ui.sliderPos.sl.sliderReleased.connect(self.posSliderReleaseHandler)
+        self.nodeUI.updatePosSlider(max)
+        self.nodeUI.sliderPos.sl.sliderReleased.connect(self.posSliderReleaseHandler)
 
     def tcpClientAttached(self):
         print(self.tcpClient.peerAddress().toString()+": tcpClientAttached().")
@@ -353,3 +359,12 @@ class Commands(Enum):
     CMD_CALIBRATE = 15
     CMD_GET_LIVE_POS_AND_LIGHT = 16
     CMD_RESET = 17
+
+class States(Enum):
+    IDLE = 0
+    CAL_3 = 1
+    CAL_2 = 2
+    CAL_1 = 3
+    CAL_0 = 4
+    POS_PERSUIT = 5
+    LIGHT_PERSUIT = 6

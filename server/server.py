@@ -22,6 +22,7 @@ def appendNewClient(client):
 def appendNewClientGUI(client):
     global nodes, ui
     node = GUINode(client, ui.appendNode())
+    node.closeBtnPressed.connect(ui.removeNode)
     nodes.append(node)
 
 def testCommunication():
@@ -63,6 +64,7 @@ if __name__ == '__main__':
     MainWindow = QtWidgets.QMainWindow()
     ui = Ui_MainWindow()
     ui.setupUi(MainWindow)
+    ui.appendNode()
     MainWindow.show()
     startListening()
     app.exec_()
