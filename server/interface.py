@@ -21,15 +21,18 @@ def getIPAddress():
 """Represent the central node. accept and process TCP request from distributed nodes."""
 class Server(QTcpServer):
     newClient = pyqtSignal(QTcpSocket)
+    startedListening = pyqtSignal(str, int)
+    failedToListen = pyqtSignal(str)
     def __init__(self):
         super(Server, self).__init__()
         self.newConnection.connect(self.acceptConnection)
         self.acceptError.connect(self.acceptErrorHandler)
-        if not self.listen(address=QHostAddress.Any, port=1234):
-            print("interface.py: Unable to start the server: ", self.errorString())
-            return
-        ipAddress = getIPAddress()
-        print('interface.py: The server is running on', ipAddress, 'port', self.serverPort())
+
+    def startListening(self, port):
+        if not self.listen(address=QHostAddress.Any, port=port):
+            self.failedToListen.emit(self.errorString())
+        else:
+            self.startedListening.emit(getIPAddress(), port)
 
     def acceptConnection(self):
         self.newClient.emit(self.nextPendingConnection())
@@ -76,11 +79,11 @@ class Node(QObject):
         self.targetLight = None
         self.curLight = None
         self.curPos = None
-        self.timer = QTimer()
-        self.interval = 500 #ms
-        self.timer.timeout.connect(self.persuitLight)
         self.kp = 0.4
-
+        self.maxPos = None
+        self.minPos = None
+        self.maxLight = None
+        self.minLight = None
 
     '''Methods to be used by the the child classes'''
 
@@ -95,11 +98,14 @@ class Node(QObject):
 
     #Detach the tcpClient from the Node
     def detach(self):
-        self.tcpClient.readyRead.disconnect(self.newInput)
-        self.tcpClient.error.disconnect(self.socketError)
-        self.tcpClient.error.disconnect(self.detach)
-        self.tcpClient = None
-        self.tcpClientDetached()
+        try:
+            self.tcpClient.readyRead.disconnect(self.newInput)
+            self.tcpClient.error.disconnect(self.socketError)
+            self.tcpClient.error.disconnect(self.detach)
+            self.tcpClientDetached()
+            self.tcpClient = None
+        except:
+            pass
 
     def write(self, command, value1, value2):
         self.tcpClient.write(struct.pack("Hhh", command.value, value1, value2))
@@ -169,6 +175,20 @@ class Node(QObject):
     def setPos(self, pos):
         self.write(Commands.CMD_SET_POS, pos, 0)
 
+    def setPosByUser(self, pos):
+        print('setPosByUser')
+        if self.minPos == None or self.maxPos == None:
+            return
+        mPos = self.map(pos, 0, 100, self.minPos, self.maxPos)
+        self.setPos(mPos)
+
+    def setLightByUser(self, light):
+        print('setLightByUser')
+        if self.minLight == None or self.maxLight == None:
+            return
+        mLight = self.map(light, 0, 100, self.minLight, self.maxLight)
+        self.setLight(mLight)
+
     def setLight(self, light):
         self.write(Commands.CMD_SET_LIGHT, light, 0)
 
@@ -181,8 +201,19 @@ class Node(QObject):
     def step(self, steps):
         self.write(Commands.CMD_SET_STEP_INCREMENT, steps, 0)
 
+    def stepByUser(self, steps):
+        print('stepByUser')
+        if self.minPos == None or self.maxPos == None:
+            return
+        mSteps = self.map(steps, 0, 100, self.minPos, self.maxPos)
+        self.write(Commands.CMD_SET_STEP_INCREMENT, mSteps, 0)
+        self.step(mSteps)
+
     def reset(self):
         self.write(Commands.CMD_RESET, 0, 0)
+
+    def map(sefl, x, in_min, in_max, out_min, out_max):
+        return int((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min)
 
 """An Node implementation that is used in a command line interface. Used in computer with no graphics"""
 class CLINode(Node):
@@ -216,8 +247,12 @@ class GUINode(Node):
     closeBtnPressed = pyqtSignal(NodeWidget)
     def __init__(self, tcpClient, nodeUI:NodeWidget):
         super(GUINode, self).__init__(tcpClient)
-        ui.plot.plotItem.setTitle(tcpClient.peerAddress().toString())
+        self.timer = QTimer()
+        self.interval = 500 #ms
+        self.timer.timeout.connect(self.persuitLight)
+
         self.nodeUI = nodeUI
+        self.nodeUI.plot.plotItem.setTitle(tcpClient.peerAddress().toString()[7:])
         self.newPos.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPos(", val,")"))
         # self.newLight.connect(self.ui.plot.appendData)
         self.newPosMax.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPosMax(", val,")"))
@@ -231,24 +266,34 @@ class GUINode(Node):
         self.newSetLight.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetLight(", val,")"))
         self.newSetModeSensor.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetModeSensor(", val,")"))
         self.newSetModeLight.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetModeLight(", val,")"))
-        self.newSetMinPos.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetMinPos(", val,")"))
-        self.newSetMaxPos.connect(self.updatePosSlider)
+        self.newSetMinPos.connect(self.newSetMinPosHandler)
+        self.newSetMaxPos.connect(self.newSetMaxPosHandler)
         self.newSetStepIncrement.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newStep(", val, ")"))
         self.newPosAndLight.connect(self.nodeUI.plot.append)
         self.newGetState.connect(self.nodeUI.state.changeState)
         self.newLivePosAndLight.connect(self.newLivePosAndLightHandler)
 
-        ui.btnSetMinPos.pressed.connect(self.setMinPos)
-        ui.btnSetMaxPos.pressed.connect(self.setMaxPos)
-        ui.btnCalibrate.pressed.connect(self.calibrateBtnHandler)
-        ui.btnLive.pressed.connect(self.liveBtnHandler)
-        ui.btnReset.pressed.connect(self.resetBtnHandler)
-        ui.btnTimerOff.pressed.connect(self.timer.stop)
-        ui.btnDisconnect.pressed.connect(self.disconnectBtnHandler)
+        self.nodeUI.btnSetMinPos.pressed.connect(self.setMinPos)
+        self.nodeUI.btnSetMaxPos.pressed.connect(self.setMaxPos)
+        self.nodeUI.btnCalibrate.pressed.connect(self.calibrateBtnHandler)
+        self.nodeUI.btnLive.pressed.connect(self.liveBtnHandler)
+        self.nodeUI.btnReset.pressed.connect(self.resetBtnHandler)
+        self.nodeUI.btnTimerOff.pressed.connect(self.timer.stop)
+        self.nodeUI.btnDisconnect.pressed.connect(self.disconnectBtnHandler)
 
         # self.buttonDeliver.pressed.connect(lambda: self.buttonDeliverPressed.emit(self.slider.slider.value()))
-        ui.btnUp.pressed.connect(lambda: self.step(int(ui.paramStep.value())))
-        ui.btnDown.pressed.connect(lambda: self.step(-int(ui.paramStep.value())))
+        self.nodeUI.btnUp.pressed.connect(lambda: self.step(int(self.nodeUI.paramStep.value())))
+        self.nodeUI.btnDown.pressed.connect(lambda: self.step(-int(self.nodeUI.paramStep.value())))
+
+        self.nodeUI.sliderPos.slider.sliderReleased.connect(self.posSliderReleaseHandler)
+        self.nodeUI.sliderLight.slider.sliderReleased.connect(self.lightSliderReleaseHandler)
+
+    def newSetMinPosHandler(self, pos):
+        self.minPos = pos
+
+    def newSetMaxPosHandler(self, pos):
+        self.maxPos = pos
+        self.updatePosSlider(pos)
 
     def newLivePosAndLightHandler(self, pos, light):
         self.nodeUI.plot.setLivePoint(x=pos, y=light)
@@ -256,7 +301,6 @@ class GUINode(Node):
         self.curLight = light
 
     def disconnectBtnHandler(self):
-        self.tcpClient.disconnect()
         self.detach()
         print("closed")
         self.closeBtnPressed.emit(self.nodeUI)
@@ -278,11 +322,14 @@ class GUINode(Node):
             self.nodeUI.plot.liveCurve.hide()
             self.getLivePosAndLight(on=0, intervalMilis=0)
             self.nodeUI.btnLive.setText("Live On")
+            self.targetLight = None
 
     def newCalibrateStatusHandler(self, status):
         if (status == self.CAL_STATUS_SUCCESSFUL):
             print(min(self.nodeUI.plot.y))
-            self.updateLightSlider(min(self.nodeUI.plot.y), max(self.nodeUI.plot.y))
+            self.minLight = min(self.nodeUI.plot.y)
+            self.maxLight = max(self.nodeUI.plot.y)
+            self.updateLightSlider(self.minLight, self.maxLight)
             print("Calibration Status: CAL_STATUS_SUCCESSFUL")
         elif (status == self.CAL_STATUS_TIMEOUT):
             print("Calibration Status: CAL_STATUS_TIMEOUT")
@@ -299,37 +346,39 @@ class GUINode(Node):
         else:
             print("Calibration Status: UNKNOWN")
 
-
     def posSliderReleaseHandler(self):
-        val = self.nodeUI.sliderPos.sl.value()      #current slider's value
+        val = self.nodeUI.sliderPos.slider.value()      #current slider's value
         self.setPos(val)                        #execution
         self.nodeUI.plot.setTargetPos(val)          #Display
 
     def lightSliderReleaseHandler(self):
-        val = self.nodeUI.sliderLight.sl.value()    #current slider's value
+        val = self.nodeUI.sliderLight.slider.value()    #current slider's value
         self.nodeUI.plot.setTargetLight(val)        #Display
         #execution
+        self.getLivePosAndLight(on=1, intervalMilis=100)
         self.targetLight = val
         self.timer.setInterval(self.interval)
         self.timer.start()
 
     def persuitLight(self):
-        diff = self.curLight - self.targetLight
-        if(abs(diff) < LIGHT_TOLERANCE):
-            self.nodeUI.plot.setLivePointColor('y')
+        if self.targetLight is None:
             self.timer.stop()
-        else:
-            step = int(diff * self.kp)
-            print(-step)
-            self.step(-step)
+            return
+        if self.curLight is not None:
+            diff = self.curLight - self.targetLight
+            if(abs(diff) < LIGHT_TOLERANCE):
+                self.nodeUI.plot.setLivePointColor('y')
+                self.timer.stop()
+            else:
+                step = int(diff * self.kp)
+                print(-step)
+                self.step(-step)
 
     def updateLightSlider(self, min, max):
-        self.nodeUI.updateLightSlider(min=min, max=max)
-        self.nodeUI.sliderLight.sl.sliderReleased.connect(self.lightSliderReleaseHandler)
+        self.nodeUI.sliderLight.setRange(min, max, (max-min)//10)
 
     def updatePosSlider(self, max):
-        self.nodeUI.updatePosSlider(max)
-        self.nodeUI.sliderPos.sl.sliderReleased.connect(self.posSliderReleaseHandler)
+        self.nodeUI.sliderPos.setRange(0, max, max//10)
 
     def tcpClientAttached(self):
         print(self.tcpClient.peerAddress().toString()+": tcpClientAttached().")
@@ -339,6 +388,27 @@ class GUINode(Node):
 
     def socketError(self, status):
         print(self.tcpClient.peerAddress().toString()+": setSharePos(",status,").")
+
+
+class UserNode(Node):
+    def __init__(self, tcpClient, nodeUI):
+        super(UserNode, self).__init__(tcpClient)
+        self.nodeUI = nodeUI
+        self.nodeUI.setText('User: ' + tcpClient.peerAddress().toString()[7:])
+
+    def connectToShade(self, shade:GUINode):
+        self.newSetPos.connect(shade.setPosByUser)
+        self.newSetLight.connect(shade.setLightByUser)
+        self.newSetStepIncrement.connect(shade.stepByUser)
+
+    def tcpClientAttached(self):
+        print(self.tcpClient.peerAddress().toString() + ": tcpClientAttached().")
+
+    def tcpClientDetached(self):
+        print(self.tcpClient.peerAddress().toString() + ": tcpClientDetached().")
+
+    def socketError(self, status):
+        print(self.tcpClient.peerAddress().toString() + ": setSharePos(", status, ").")
 
 class Commands(Enum):
     CMD_GET_STATE = 0
@@ -362,9 +432,9 @@ class Commands(Enum):
 
 class States(Enum):
     IDLE = 0
-    CAL_3 = 1
-    CAL_2 = 2
-    CAL_1 = 3
-    CAL_0 = 4
+    CAL_0 = 1
+    CAL_1 = 2
+    CAL_2 = 3
+    CAL_3 = 4
     POS_PERSUIT = 5
     LIGHT_PERSUIT = 6

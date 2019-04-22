@@ -32,6 +32,28 @@
 
 #define PULSES_PER_STEP 1
 
+      
+
+enum calibration_status {
+  CAL_STATUS_SUCCESSFUL,
+  CAL_STATUS_TIMEOUT,
+  CAL_STATUS_LIMIT_NOT_SET,
+  CAL_STATUS_IN_STAGE0,
+  CAL_STATUS_IN_STAGE1,
+  CAL_STATUS_IN_STAGE2,
+  CAL_STATUS_IN_STAGE3,
+};
+
+enum State {
+  STATE_IDLE,
+  STATE_CAL_3,
+  STATE_CAL_2,
+  STATE_CAL_1,
+  STATE_CAL_0,
+  STATE_POS_PERSUIT,
+  STATE_LIGHT_PERSUIT,
+};
+
 enum Commands {
   CMD_GET_STATE,
   CMD_GET_POS,
@@ -47,37 +69,16 @@ enum Commands {
   CMD_SET_LIGHT,
   CMD_SET_MIN_POS,
   CMD_SET_MAX_POS,
-  CMD_SET_STEP_INCREMENT,  // or negative means decrement
+  CMD_SET_STEP_INCREMENT,
   CMD_CALIBRATE,
   CMD_GET_LIVE_POS_AND_LIGHT,
   CMD_RESET,
 };
 
-enum calibration_status {
-  CAL_STATUS_SUCCESSFUL,
-  CAL_STATUS_TIMEOUT,
-  CAL_STATUS_LIMIT_NOT_SET,
-  CAL_STATUS_IN_STAGE0,
-  CAL_STATUS_IN_STAGE1,
-  CAL_STATUS_IN_STAGE2,
-  CAL_STATUS_IN_STAGE3,
-};
-
-enum State {
-  STATE_IDLE,
-  STATE_CAL_0,
-  STATE_CAL_1,
-  STATE_CAL_2,
-  STATE_CAL_3,
-  STATE_POS_PERSUIT,
-  STATE_LIGHT_PERSUIT,
-};
-
-enum calibration_stage { STAGE0, STAGE1, STAGE2, STAGE3 };
-
 struct Measurement {
   int pos, light;
 };
+
 typedef struct Measurement mea_t;
 
 struct Message {
@@ -111,6 +112,7 @@ int status;
 const char *ssid = "Mars";
 const char *password = "3941HIEU";
 IPAddress serverip(192, 168, 0, 25);
+int port = 2345;
 WiFiClient client;
 char dataIn[MESSAGE_LENGTH];
 char dataOut[MESSAGE_LENGTH + 1];  // Nul char to terminate the string
@@ -153,13 +155,23 @@ void connectToWirelessRouter() {
   Serial.print("Your local IP address is ");
   Serial.println(WiFi.localIP());
 }
+
+int connectToServer(){
+  if (client.connect(serverip, port)) {  // Connect to server
+    Serial.println("Connected to server!");
+    return 1;
+  } else {
+    Serial.println("Failed to connect to server!");
+    return 0;
+  }
+}
+
 // Connect to the server. Also connect the the wireless router before that.
 void setUpCommunication() {
   connectToWirelessRouter();
-  if (client.connect(serverip, 1234)) {  // Connect to server
-    Serial.println("Connected to server!");
-  } else {
-    Serial.println("Failed to connect to server!");
+  while(!(connectToServer())){
+    delay(500);
+    //Spin
   }
 }
 
@@ -301,88 +313,89 @@ void calibrate() {
 
 // Receive and execute a command from server
 void tcpReceive() {
-  if (!client.connected()) {  // Connection failed
-    Serial.printf("Wifi connection failed with status %d.\n", WiFi.status());
-  } else {  // Receive message
-    while (client.available() >= sizeof(iMsg)) {
-      client.readBytes((byte *)&iMsg, sizeof(iMsg));  // Read new message
-      switch (iMsg.commmand) {
-        case CMD_GET_STATE:
-          break;
-        case CMD_GET_POS:
-          break;
-        case CMD_GET_LIGHT:
-          break;
-        case CMD_GET_POS_AND_LIGHT:
-          break;
-        case CMD_GET_MAX_POS:
-          break;
-        case CMD_GET_MAX_LIGHT:
-          break;
-        case CMD_GET_MIN_POS:
-          break;
-        case CMD_GET_MIN_LIGHT:
-          break;
-        case CMD_GET_LOWER_BOUND_POS_AND_LIGHT:
-          break;
-        case CMD_GET_UPPER_BOUND_POS_AND_LIGHT:
-          break;
-        case CMD_SET_POS:
-          setTargetPos(iMsg.value1);
-          currState = STATE_POS_PERSUIT;
-          Serial.printf("Target Pos: %d - Current Pos: %d\n", targetPos,
-                        currPos);
-          send(CMD_SET_POS, targetPos, 0);
-          break;
-        case CMD_SET_LIGHT:
-          break;
-        case CMD_SET_MIN_POS:
-          minPos = 0;
-          currPos = 0;
-          targetPos = 0;
-          currState = STATE_POS_PERSUIT;
-          send(CMD_SET_MIN_POS, minPos, 0);
-          Serial.printf("setMinPos(%d)\n", minPos);
-          break;
-        case CMD_SET_MAX_POS:
-          maxPos = currPos;
-          send(CMD_SET_MAX_POS, maxPos, 0);
-          Serial.printf("setMaxPos(%d)\n", maxPos);
-          break;
-        case CMD_SET_STEP_INCREMENT:  // or negative means decrement
-          incPos(iMsg.value1);
-          changeState(STATE_POS_PERSUIT);
-          Serial.printf("CMD_SET_STEP_INCREMENT(%d)\n", currPos);
-          send(CMD_SET_STEP_INCREMENT, targetPos, 0);
-          break;
-        case CMD_CALIBRATE:
-          cProfile.timeout = iMsg.value1;
-          cProfile.numInterval = iMsg.value2;
-          changeState(STATE_CAL_0);
-          break;
-        case CMD_GET_LIVE_POS_AND_LIGHT:
-          if(iMsg.value1){
-            tickerMeasureLight.detach();
-            tickerMeasureLight.attach((float)iMsg.value2/1000, updateLight);
-            tickerLivePosAndLight.detach();
-            tickerLivePosAndLight.attach((float)iMsg.value2/1000, sendLivePosAndLight);
-          } else {
-            tickerLivePosAndLight.detach();
-            tickerMeasureLight.detach();
-            tickerMeasureLight.attach(DEFAULT_LIGHT_UPDATE_PERIOD_SECOND, updateLight);
-          }
-          break;
-        case CMD_RESET:
-          maxPos = DEFAULT_MAX_POS;
-          minPos = DEFAULT_MIN_POS;
-          targetPos = 0;
-          currPos = 0;
-          changeState(STATE_IDLE);
-          break;
-          default:
-          Serial.printf("tcpReceive: Unknown command\n");
-          break;
-      }
+  while (!client.connected()) {  // Connection failed
+      Serial.printf("Wifi connection failed with status %d.\n", WiFi.status());
+      delay(500);
+      connectToServer();
+  }
+  while (client.available() >= sizeof(iMsg)) {
+    client.readBytes((byte *)&iMsg, sizeof(iMsg));  // Read new message
+    switch (iMsg.commmand) {
+      case CMD_GET_STATE:
+        break;
+      case CMD_GET_POS:
+        break;
+      case CMD_GET_LIGHT:
+        break;
+      case CMD_GET_POS_AND_LIGHT:
+        break;
+      case CMD_GET_MAX_POS:
+        break;
+      case CMD_GET_MAX_LIGHT:
+        break;
+      case CMD_GET_MIN_POS:
+        break;
+      case CMD_GET_MIN_LIGHT:
+        break;
+      case CMD_GET_LOWER_BOUND_POS_AND_LIGHT:
+        break;
+      case CMD_GET_UPPER_BOUND_POS_AND_LIGHT:
+        break;
+      case CMD_SET_POS:
+        setTargetPos(iMsg.value1);
+        changeState(STATE_POS_PERSUIT);
+        Serial.printf("Target Pos: %d - Current Pos: %d\n", targetPos,
+                      currPos);
+        send(CMD_SET_POS, targetPos, 0);
+        break;
+      case CMD_SET_LIGHT:
+        break;
+      case CMD_SET_MIN_POS:
+        minPos = 0;
+        currPos = 0;
+        targetPos = 0;
+        currState = STATE_POS_PERSUIT;
+        send(CMD_SET_MIN_POS, minPos, 0);
+        Serial.printf("setMinPos(%d)\n", minPos);
+        break;
+      case CMD_SET_MAX_POS:
+        maxPos = currPos;
+        send(CMD_SET_MAX_POS, maxPos, 0);
+        Serial.printf("setMaxPos(%d)\n", maxPos);
+        break;
+      case CMD_SET_STEP_INCREMENT:  // or negative means decrement
+        incPos(iMsg.value1);
+        changeState(STATE_POS_PERSUIT);
+        Serial.printf("CMD_SET_STEP_INCREMENT(%d)\n", currPos);
+        send(CMD_SET_STEP_INCREMENT, targetPos, 0);
+        break;
+      case CMD_CALIBRATE:
+        cProfile.timeout = iMsg.value1;
+        cProfile.numInterval = iMsg.value2;
+        changeState(STATE_CAL_0);
+        break;
+      case CMD_GET_LIVE_POS_AND_LIGHT:
+        if(iMsg.value1){
+          tickerMeasureLight.detach();
+          tickerMeasureLight.attach((float)iMsg.value2/1000, updateLight);
+          tickerLivePosAndLight.detach();
+          tickerLivePosAndLight.attach((float)iMsg.value2/1000, sendLivePosAndLight);
+        } else {
+          tickerLivePosAndLight.detach();
+          tickerMeasureLight.detach();
+          tickerMeasureLight.attach(DEFAULT_LIGHT_UPDATE_PERIOD_SECOND, updateLight);
+        }
+        break;
+      case CMD_RESET:
+        maxPos = DEFAULT_MAX_POS;
+        minPos = DEFAULT_MIN_POS;
+        targetPos = 0;
+        currPos = 0;
+        changeState(STATE_IDLE);
+        break;
+        default:
+        Serial.printf("tcpReceive: Unknown command\n");
+        break;
     }
   }
 }
@@ -454,7 +467,7 @@ void loop() {
   if (currState == STATE_IDLE) {
     doHoldPos = false;
     // Do something
-  } else if (currState >= STATE_CAL_0 && currState <= STATE_CAL_3) {
+  } else if (currState >= STATE_CAL_3 && currState <= STATE_CAL_0) {
     calibrate();
   } else if (currState == STATE_POS_PERSUIT) {
     if (abs(targetPos - currPos) < POS_TOLERANCE)

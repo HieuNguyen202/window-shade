@@ -24,7 +24,7 @@ class Ui_MainWindow(object):
         #Set up window
         MainWindow.setObjectName("MainWindow")
         MainWindow.setWindowTitle("Window shade monitor")
-        MainWindow.resize(614, 498)
+        MainWindow.resize(1000, 800)
 
         self.nodes = list()
 
@@ -55,7 +55,7 @@ class Ui_MainWindow(object):
         MainWindow.addToolBar(QtCore.Qt.TopToolBarArea, self.mainToolBar)
 
         #Set up widgets
-        self.labelStatus = QtWidgets.QLabel("No status!")
+        self.lbStatus = QtWidgets.QLabel("No status!")
 
         #Add widgets to menu bar
 
@@ -64,15 +64,19 @@ class Ui_MainWindow(object):
         # self.mainToolBar.addWidget(self.connectivityWidget)
 
         #Add widgets to status bar
-        self.statusBar.addWidget(self.labelStatus)
+        self.statusBar.addWidget(self.lbStatus)
 
         #Add widgets to the layout
 
     def appendNode(self):
-        global ui
         n = NodeWidget()
         self.layout.addWidget(n)
         self.nodes.append(n)
+        return n
+
+    def appendUser(self):
+        n = QtWidgets.QLabel("No status!")
+        self.mainToolBar.addWidget(n)
         return n
 
     def removeNode(self, nodeUI):
@@ -111,8 +115,9 @@ class DynamicPlotWidget(PlotWidget):
         self.y = list()
 
         #Setup live view
-        self.targetPosLine = self.addLine(x=0, y=None, pen='g')
-        self.targetLightLine = self.addLine(x=None, y=0, pen='y')
+        self.targetPosLine = self.addLine(x=0, y=None, pen=pg.mkPen('g', width=7))
+        self.targetLightLine = self.addLine(x=None, y=0, pen=pg.mkPen('y', width=7))
+
         self.curve = pg.ScatterPlotItem(self.x, self.y, pen=(255,0,0))
         self.liveCurve = pg.ScatterPlotItem(pen='w', brush='w', size=30)
 
@@ -160,32 +165,32 @@ class DynamicPlotWidget(PlotWidget):
 
 """A slider widget with name and marks."""
 class SliderWidget(QtWidgets.QWidget):
-    def __init__(self, name= "Slider's Name", min = 0, max=100, numInterval = 5):
+    def __init__(self, min, max, interval=1, orientation=Qt.Horizontal, labels=None, parent=None, name= ''):
         super(SliderWidget, self).__init__()
-        layout = QtWidgets.QGridLayout()
-        self.setLayout(layout)
+        self.layout = QtWidgets.QVBoxLayout()
+        self.setLayout(self.layout)
 
         #create widgets
         self.lbName = QtWidgets.QLabel(name)
+        self.lbMax = QtWidgets.QLabel(str(min))
+        self.lbMin = QtWidgets.QLabel(str(max))
         self.slider = QtWidgets.QSlider(QtCore.Qt.Vertical)
+        self.setRange(min, max, interval)
 
-        #setup widgets
-        interval = (max - min)//numInterval
+        #Add widgets to layout
+        self.layout.addWidget(self.lbMax)
+        self.layout.addWidget(self.slider)
+        self.layout.addWidget(self.lbMin)
+        self.layout.addWidget(self.lbName)
+
+    def setRange(self, min, max, interval):
         self.slider.setRange(min, max)
-        self.slider.setValue(min)
         self.slider.setTickPosition(QtWidgets.QSlider.TicksBelow)
         self.slider.setTickInterval(interval)
         self.slider.setSingleStep(interval)
+        self.lbMin.setText(str(min))
+        self.lbMax.setText(str(max))
 
-        #Add widgets to layout
-        layout.addWidget(self.lbName, 1, 1, 1, 2)
-        layout.addWidget(self.slider, 2, 1, numInterval + 1, 1)
-
-        #Add marks numbers
-        for i in range(min, max + 1, interval):
-            label = QtWidgets.QLabel(str(i*interval))
-            label.setAlignment(QtCore.Qt.AlignCenter)
-            layout.addWidget(label, numInterval - i +2, 2 ,1 ,1)
 
 """Source: https://stackoverflow.com/questions/47494305/python-pyqt4-slider-with-tick-labels"""
 class LabeledSlider(QtWidgets.QWidget):
@@ -350,23 +355,20 @@ class State(QtWidgets.QWidget):
         self.states.append(self.lbLPersuit)
 
         #middle justify all labels
-        items = (self.layout.itemAt(i) for i in range(self.layout.count()))
+        items = (self.layout.itemAt(i).widget() for i in range(self.layout.count()))
         for w in items:
             w.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter)
-
+            w.setFrameShape(QtWidgets.QFrame.StyledPanel | QtWidgets.QFrame.Raised)
+            w.setLineWidth(3)
+            w.setMargin(5);
         # self.setMaximumWidth(100)
         # self.setMaximumHeight(50)
 
     def changeState(self, s):
         self.lastState.setStyleSheet("QLabel {background:transparent}; color: black")
-        self.lastState.setFrameShape(QtWidgets.QFrame.NoFrame)
-
+        self.lastState.setLineWidth(10)
         self.states[s].setStyleSheet("QLabel {background-color:green; color: white}")
-        self.states[s].setFrameShape(QtWidgets.QFrame.StyledPanel|QtWidgets.QFrame.Raised)
-        self.states[s].setLineWidth(3)
-
         self.lastState = self.states[s]
-
 
     def value(self):
         return self.textEdit.toPlainText()
@@ -401,8 +403,8 @@ class NodeWidget(QtWidgets.QWidget):
         self.state.changeState(6)
         self.state.changeState(0)
 
-        self.sliderPos = LabeledSlider(minimum=0, maximum=100, interval=100//10, orientation=Qt.Vertical, name='P')
-        self.sliderLight = LabeledSlider(minimum=0, maximum=100, interval=100//10, orientation=Qt.Vertical, name='L')
+        self.sliderPos = SliderWidget(min=0, max=100, interval=30, orientation=Qt.Vertical, name='P')
+        self.sliderLight = SliderWidget(min=0, max=100, interval=40, orientation=Qt.Vertical, name='L')
 
         self.plot = DynamicPlotWidget(sampleinterval=0.05, timewindow=10.)
         # self.plot.hide()
@@ -431,17 +433,21 @@ class NodeWidget(QtWidgets.QWidget):
         self.hLayout.addWidget(self.plot)
         self.hLayout.addLayout(self.vLayout)
 
-    def updatePosSlider(self, max):
-        if self.sliderPos != None:
-            self.sliderLayout.removeWidget(self.sliderPos)
-        self.sliderPos = LabeledSlider(minimum=0, maximum=max, interval=max//10, orientation=Qt.Vertical)
-        self.sliderLayout.addWidget(self.sliderPos, 1, 1)
-
-    def updateLightSlider(self, min, max):
-        if self.sliderLight != None:
-            self.hLayout.removeWidget(self.sliderLight)
-        self.sliderLight = LabeledSlider(minimum=min, maximum=max, interval=max//10, orientation=Qt.Vertical)
-        self.sliderLayout.addWidget(self.sliderLight, 1, 2)
+    # def updatePosSlider(self, max):
+    #     if self.sliderPos != None:
+    #         self.sliderLayout.removeWidget(self.sliderPos)
+    #         self.sliderPos.deleteLater()
+    #         self.sliderPos = None
+    #     self.sliderPos = LabeledSlider(minimum=0, maximum=max, interval=max//10, orientation=Qt.Vertical)
+    #     self.sliderLayout.addWidget(self.sliderPos, 1, 1)
+    #
+    # def updateLightSlider(self, min, max):
+    #     if self.sliderLight != None:
+    #         self.sliderLayout.removeWidget(self.sliderLight)
+    #         self.sliderLight.deleteLater()
+    #         self.sliderLight = None
+    #     self.sliderLight = LabeledSlider(minimum=min, maximum=max, interval=max//10, orientation=Qt.Vertical)
+    #     self.sliderLayout.addWidget(self.sliderLight, 1, 2)
 
 def getdata():
     global m
