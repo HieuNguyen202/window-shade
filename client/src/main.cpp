@@ -24,6 +24,9 @@
 #define DEFAULT_MIN_POS -100000
 #define DEFAULT_MAX_POS 100000
 
+
+
+
 #define DEFAULT_NUM_CAL_INTERVALS 20
 
 #define DEFAULT_LIGHT_UPDATE_PERIOD_SECOND 0.5
@@ -109,9 +112,20 @@ volatile long counter = 0;
 
 int count = 0;
 int status;
+
+struct WifiCredentials{
+  const char *ssid;
+  const char *password;
+};
+
+#define NUMBER_OF_CREDENTIALS 3
+
+struct WifiCredentials credentials[] = {{"HieuToGo", "3941HIEU"}, {"Mars", "3941HIEU"}, {"NETGEAR34", "newplum360"}};
+int rIdx = 0;
 const char *ssid = "Mars";
 const char *password = "3941HIEU";
 IPAddress serverip(192, 168, 0, 25);
+
 int port = 2345;
 WiFiClient client;
 char dataIn[MESSAGE_LENGTH];
@@ -145,15 +159,30 @@ void IRAM_ATTR pinAHandler() {
 
 // Connect to the wireless router
 void connectToWirelessRouter() {
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print("Connecting to ");
-    Serial.println(ssid);
+  int numNetworks = WiFi.scanNetworks();
+  for(size_t ii = 0; ii < NUMBER_OF_CREDENTIALS; ii++){
+    Serial.printf("Trying %s\n", credentials[ii].ssid);
+    for(size_t i = 0; i < numNetworks; i++)
+    {
+      Serial.println(WiFi.SSID(i));
+      if(WiFi.SSID(i).equals(credentials[ii].ssid)){
+        WiFi.begin(credentials[ii].ssid, credentials[ii].password);
+        while (WiFi.status() != WL_CONNECTED) {
+          Serial.printf("Connecting to %s\n", credentials[ii].ssid);
+          delay(500);
+        }
+        Serial.printf("Connected to %s\n", credentials[ii]);
+        Serial.printf("Your local IP address is ");
+        Serial.println(WiFi.localIP());
+        //Get server's ip address (always 25)
+        Serial.printf("Your server IP address is ");
+        serverip = WiFi.gatewayIP();
+        serverip[3] = 25;
+        Serial.println(serverip);
+        return;
+      }
+    }
   }
-  Serial.println("Connected to Mars!");
-  Serial.print("Your local IP address is ");
-  Serial.println(WiFi.localIP());
 }
 
 int connectToServer(){
@@ -477,5 +506,6 @@ void loop() {
   } else {
     printf("Unkown state %d\n", currState);
   }
+  Serial.println(WiFi.gatewayIP());
   updatePos();
 }
