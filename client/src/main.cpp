@@ -21,11 +21,8 @@
 #define PULSE_TO_STEP_FACTOR 2
 #define MICROSTEPS 1
 
-#define DEFAULT_MIN_POS -100000
-#define DEFAULT_MAX_POS 100000
-
-
-
+#define DEFAULT_MIN_POS -32767
+#define DEFAULT_MAX_POS 32767
 
 #define DEFAULT_NUM_CAL_INTERVALS 20
 
@@ -34,8 +31,6 @@
 #define POS_TOLERANCE 5
 
 #define PULSES_PER_STEP 1
-
-      
 
 enum calibration_status {
   CAL_STATUS_SUCCESSFUL,
@@ -76,6 +71,8 @@ enum Commands {
   CMD_CALIBRATE,
   CMD_GET_LIVE_POS_AND_LIGHT,
   CMD_RESET,
+  CMD_SCHEDULER,
+  CMD_STOP
 };
 
 struct Measurement {
@@ -351,24 +348,30 @@ void tcpReceive() {
     client.readBytes((byte *)&iMsg, sizeof(iMsg));  // Read new message
     switch (iMsg.commmand) {
       case CMD_GET_STATE:
+        send(CMD_GET_STATE, currState, 0);
         break;
       case CMD_GET_POS:
+        send(CMD_GET_POS, currPos, 0);
         break;
       case CMD_GET_LIGHT:
+        send(CMD_GET_LIGHT, light, 0);
         break;
       case CMD_GET_POS_AND_LIGHT:
+        send(CMD_GET_POS_AND_LIGHT, currPos, light);
         break;
       case CMD_GET_MAX_POS:
+        send(CMD_GET_MAX_POS, maxPos, 0);
         break;
-      case CMD_GET_MAX_LIGHT:
+      case CMD_GET_MAX_LIGHT: //not implemented
         break;
       case CMD_GET_MIN_POS:
+        send(CMD_GET_MIN_POS, minPos, 0);
         break;
-      case CMD_GET_MIN_LIGHT:
+      case CMD_GET_MIN_LIGHT: //not implemented
         break;
-      case CMD_GET_LOWER_BOUND_POS_AND_LIGHT:
+      case CMD_GET_LOWER_BOUND_POS_AND_LIGHT: //not implemented
         break;
-      case CMD_GET_UPPER_BOUND_POS_AND_LIGHT:
+      case CMD_GET_UPPER_BOUND_POS_AND_LIGHT: //not implemented
         break;
       case CMD_SET_POS:
         setTargetPos(iMsg.value1);
@@ -377,7 +380,7 @@ void tcpReceive() {
                       currPos);
         send(CMD_SET_POS, targetPos, 0);
         break;
-      case CMD_SET_LIGHT:
+      case CMD_SET_LIGHT: //not implemented
         break;
       case CMD_SET_MIN_POS:
         minPos = 0;
@@ -420,9 +423,16 @@ void tcpReceive() {
         minPos = DEFAULT_MIN_POS;
         targetPos = 0;
         currPos = 0;
+        send(CMD_GET_MIN_POS, minPos, 0);
+        send(CMD_GET_MAX_POS, maxPos, 0);
         changeState(STATE_IDLE);
         break;
-        default:
+      case CMD_SCHEDULER: //not implemented
+          break;
+      case CMD_STOP:
+          changeState(STATE_IDLE);
+          break;
+      default:
         Serial.printf("tcpReceive: Unknown command\n");
         break;
     }
@@ -441,7 +451,7 @@ void updatePos() {
   if (doHoldPos) {
     if (abs(diff) > POS_TOLERANCE) {
       stepper.enable();
-      if (stepper.getStepsRemaining() < abs(diff)) {
+      if (stepper.getStepsRemaining() < abs(diff) || stepper.getDirection() * diff < 0) { //if opposite direction or remaining step hasn't been set
         stepper.startMove(diff * MICROSTEPS * PULSES_PER_STEP);  // in microsteps
       }
     } else {
@@ -484,7 +494,7 @@ void setup() {
   tickerMeasureLight.attach(DEFAULT_LIGHT_UPDATE_PERIOD_SECOND, updateLight);
 
   // Setup stepper
-  stepper.begin(100, MICROSTEPS);
+  stepper.begin(120, MICROSTEPS);
   stepper.setEnableActiveState(LOW);
 }
 
@@ -506,6 +516,5 @@ void loop() {
   } else {
     printf("Unkown state %d\n", currState);
   }
-  Serial.println(WiFi.gatewayIP());
   updatePos();
 }
