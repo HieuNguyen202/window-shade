@@ -49,7 +49,7 @@ def testCommunication():
     n = nodes[-1]
     n.getPos()
     n.getLight()
-    n.getPosMax()
+    n.getMaxPos()
     n.getLightMax()
     n.getPosUpperLimit()
     n.getLightUpperLimit()

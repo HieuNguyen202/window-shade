@@ -69,7 +69,7 @@ class Ui_MainWindow(object):
         #Add widgets to the layout
 
     def appendNode(self):
-        n = NodeWidget()
+        n = NodeWidget(display=self.lbStatus)
         self.layout.addWidget(n)
         self.nodes.append(n)
         return n
@@ -375,9 +375,9 @@ class State(QtWidgets.QWidget):
 
 """Contains controls (buttons, sliders) of a distributed node."""
 class NodeWidget(QtWidgets.QWidget):
-    def __init__(self):
+    def __init__(self, display = None):
         super(NodeWidget, self).__init__()
-
+        self.display = display
         self.hLayout = QtWidgets.QHBoxLayout()
         self.vLayout = QtWidgets.QVBoxLayout()
         self.btnLayout = QtWidgets.QGridLayout()
@@ -397,11 +397,11 @@ class NodeWidget(QtWidgets.QWidget):
         self.btnReset =  QtWidgets.QPushButton("Reset")
         self.btnTimerOff =  QtWidgets.QPushButton("TimerOff")
         self.btnDisconnect =  QtWidgets.QPushButton("Disconnect")
+        self.btnSchedulerDemo =  QtWidgets.QPushButton("Scheduler Demo")
+        self.btnStop =  QtWidgets.QPushButton("Stop")
         self.paramStep = Param(name='Step', defaultValue='200')
         self.paramKp = Param(name='Kp', defaultValue='0.3')
         self.state = State()
-        self.state.changeState(6)
-        self.state.changeState(0)
 
         self.sliderPos = SliderWidget(min=0, max=100, interval=30, orientation=Qt.Vertical, name='P')
         self.sliderLight = SliderWidget(min=0, max=100, interval=40, orientation=Qt.Vertical, name='L')
@@ -420,9 +420,11 @@ class NodeWidget(QtWidgets.QWidget):
         self.btnLayout.addWidget(self.btnReset, 4, 2)
         self.btnLayout.addWidget(self.btnTimerOff, 5, 1)
         self.btnLayout.addWidget(self.btnDisconnect, 5, 2)
-        self.btnLayout.addWidget(self.paramStep, 6, 1)
-        self.btnLayout.addWidget(self.paramKp, 6, 2)
-        self.btnLayout.addWidget(self.state, 7, 1, 1, 2)
+        self.btnLayout.addWidget(self.btnSchedulerDemo, 6, 1)
+        self.btnLayout.addWidget(self.btnStop, 6, 2)
+        self.btnLayout.addWidget(self.paramStep, 7, 1)
+        self.btnLayout.addWidget(self.paramKp, 7, 2)
+        self.btnLayout.addWidget(self.state, 8, 1, 1, 2)
 
         self.sliderLayout.addWidget(self.sliderPos, 1, 1)
         self.sliderLayout.addWidget(self.sliderLight, 1, 2)

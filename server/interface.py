@@ -44,7 +44,7 @@ class Server(QTcpServer):
 class Node(QObject):
     newPos = pyqtSignal(int)
     newLight = pyqtSignal(int)
-    newPosMax = pyqtSignal(int)
+    newGetMaxPos = pyqtSignal(int)
     newLightMax = pyqtSignal(int)
     newUpperBoundPosAndLight = pyqtSignal(int, int)
     newLightUpperLimit = pyqtSignal(int)
@@ -63,6 +63,7 @@ class Node(QObject):
     newSetStepIncrement = pyqtSignal(int)
     newPosAndLight = pyqtSignal(int, int)
     newLivePosAndLight = pyqtSignal(int, int)
+    newScheduler = pyqtSignal(int, int)
 
     CAL_STATUS_SUCCESSFUL = 0
     CAL_STATUS_TIMEOUT = 1
@@ -121,7 +122,7 @@ class Node(QObject):
             elif command == Commands.CMD_GET_POS.value: self.newPos.emit(value1)
             elif command == Commands.CMD_GET_LIGHT.value: self.newLight.emit(value1)
             elif command == Commands.CMD_GET_POS_AND_LIGHT.value: self.newPosAndLight.emit(value1, value2) #pos, light
-            elif command == Commands.CMD_GET_MAX_POS.value: self.newPosMax.emit(value1)
+            elif command == Commands.CMD_GET_MAX_POS.value: self.newGetMaxPos.emit(value1)
             elif command == Commands.CMD_GET_MAX_LIGHT.value: self.newLightMax.emit(value1)
             elif command == Commands.CMD_GET_MIN_POS.value: self.newGetMinPos.emit(value1)
             elif command == Commands.CMD_GET_MIN_LIGHT.value: self.newGetMinLight.emit(value1)
@@ -134,6 +135,7 @@ class Node(QObject):
             elif command == Commands.CMD_SET_STEP_INCREMENT.value: self.newSetStepIncrement.emit(value1)
             elif command == Commands.CMD_CALIBRATE.value: self.newCalibrateStatus.emit(value1)
             elif command == Commands.CMD_GET_LIVE_POS_AND_LIGHT.value: self.newLivePosAndLight.emit(value1, value2)
+            elif command == Commands.CMD_SCHEDULER.value: self.newScheduler.emit(value1, value2)
             else: print("Unknown message: ", message)
 
     def tcpClientAttached(self):
@@ -154,8 +156,11 @@ class Node(QObject):
     def getLight(self):
         self.write(Commands.CMD_GET_LIGHT, 0, 0)
 
-    def getPosMax(self):
+    def getMaxPos(self):
         self.write(Commands.CMD_GET_MAX_POS, 0, 0)
+
+    def getMinPos(self):
+        self.write(Commands.CMD_GET_MIN_POS, 0, 0)
 
     def getLightMax(self):
         self.write(Commands.CMD_GET_MAX_LIGHT, 0, 0)
@@ -212,6 +217,9 @@ class Node(QObject):
     def reset(self):
         self.write(Commands.CMD_RESET, 0, 0)
 
+    def stop(self):
+        self.write(Commands.CMD_STOP, 0, 0)
+
     def map(sefl, x, in_min, in_max, out_min, out_max):
         return int((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min)
 
@@ -221,7 +229,7 @@ class CLINode(Node):
         super(CLINode, self).__init__(tcpClient)
         self.newPos.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPos(", val,")"))
         self.newLight.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newLight(", val,")"))
-        self.newPosMax.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPosMax(", val,")"))
+        self.newGetMaxPos.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPosMax(", val, ")"))
         self.newLightMax.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newLightMax(", val,")"))
         self.newUpperBoundPosAndLight.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPosUpperLimit(", val, ")"))
         self.newLightUpperLimit.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newLightUpperLimit(", val,")"))
@@ -255,7 +263,8 @@ class GUINode(Node):
         self.nodeUI.plot.plotItem.setTitle(tcpClient.peerAddress().toString()[7:])
         self.newPos.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPos(", val,")"))
         # self.newLight.connect(self.ui.plot.appendData)
-        self.newPosMax.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPosMax(", val,")"))
+        self.newGetMaxPos.connect(self.newMaxPosHandler)
+        self.newGetMinPos.connect(self.newMinPosHandler)
         self.newLightMax.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newLightMax(", val,")"))
         self.newUpperBoundPosAndLight.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newPosUpperLimit(", val, ")"))
         self.newLightUpperLimit.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newLightUpperLimit(", val,")"))
@@ -266,12 +275,13 @@ class GUINode(Node):
         self.newSetLight.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetLight(", val,")"))
         self.newSetModeSensor.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetModeSensor(", val,")"))
         self.newSetModeLight.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newSetModeLight(", val,")"))
-        self.newSetMinPos.connect(self.newSetMinPosHandler)
-        self.newSetMaxPos.connect(self.newSetMaxPosHandler)
+        self.newSetMinPos.connect(self.newMinPosHandler)
+        self.newSetMaxPos.connect(self.newMaxPosHandler)
         self.newSetStepIncrement.connect(lambda val: print(self.tcpClient.peerAddress().toString() + ": newStep(", val, ")"))
         self.newPosAndLight.connect(self.nodeUI.plot.append)
         self.newGetState.connect(self.nodeUI.state.changeState)
         self.newLivePosAndLight.connect(self.newLivePosAndLightHandler)
+        self.newScheduler.connect(self.newSchedulerHandler)
 
         self.nodeUI.btnSetMinPos.pressed.connect(self.setMinPos)
         self.nodeUI.btnSetMaxPos.pressed.connect(self.setMaxPos)
@@ -280,6 +290,8 @@ class GUINode(Node):
         self.nodeUI.btnReset.pressed.connect(self.resetBtnHandler)
         self.nodeUI.btnTimerOff.pressed.connect(self.timer.stop)
         self.nodeUI.btnDisconnect.pressed.connect(self.disconnectBtnHandler)
+        self.nodeUI.btnSchedulerDemo.pressed.connect(lambda :self.newSchedulerHandler(5000, 10000))
+        self.nodeUI.btnStop.pressed.connect(self.stop)
 
         # self.buttonDeliver.pressed.connect(lambda: self.buttonDeliverPressed.emit(self.slider.slider.value()))
         self.nodeUI.btnUp.pressed.connect(lambda: self.step(int(self.nodeUI.paramStep.value())))
@@ -287,13 +299,28 @@ class GUINode(Node):
 
         self.nodeUI.sliderPos.slider.sliderReleased.connect(self.posSliderReleaseHandler)
         self.nodeUI.sliderLight.slider.sliderReleased.connect(self.lightSliderReleaseHandler)
+        self.getMinPos()
+        self.getMaxPos()
 
-    def newSetMinPosHandler(self, pos):
+
+
+    def newSchedulerHandler(self, oDelay, cDelay):
+        QTimer.singleShot(oDelay, lambda: self.setPosByUser(50))
+        QTimer.singleShot(cDelay, lambda: self.setPosByUser(0))
+
+    def newMinPosHandler(self, pos):
         self.minPos = pos
+        min = pos
+        max = self.nodeUI.sliderPos.slider.maximum()
+        self.nodeUI.sliderPos.setRange(min, max, (max - min) // 10)
+        self.nodeUI.plot.setXRange(min, max)
 
-    def newSetMaxPosHandler(self, pos):
+    def newMaxPosHandler(self, pos):
         self.maxPos = pos
-        self.updatePosSlider(pos)
+        min = self.nodeUI.sliderPos.slider.minimum()
+        max = pos
+        self.nodeUI.sliderPos.setRange(min, max, (max - min) // 10)
+        self.nodeUI.plot.setXRange(min, max)
 
     def newLivePosAndLightHandler(self, pos, light):
         self.nodeUI.plot.setLivePoint(x=pos, y=light)
@@ -329,7 +356,9 @@ class GUINode(Node):
             print(min(self.nodeUI.plot.y))
             self.minLight = min(self.nodeUI.plot.y)
             self.maxLight = max(self.nodeUI.plot.y)
-            self.updateLightSlider(self.minLight, self.maxLight)
+            self.nodeUI.sliderLight.setRange(self.minLight, self.maxLight, (self.maxLight - self.minLight) // 10)
+            self.nodeUI.plot.setYRange(self.minLight, self.maxLight)
+            self.nodeUI.display.setText("Calibration succeed!")
             print("Calibration Status: CAL_STATUS_SUCCESSFUL")
         elif (status == self.CAL_STATUS_TIMEOUT):
             print("Calibration Status: CAL_STATUS_TIMEOUT")
@@ -373,12 +402,6 @@ class GUINode(Node):
                 step = int(diff * self.kp)
                 print(-step)
                 self.step(-step)
-
-    def updateLightSlider(self, min, max):
-        self.nodeUI.sliderLight.setRange(min, max, (max-min)//10)
-
-    def updatePosSlider(self, max):
-        self.nodeUI.sliderPos.setRange(0, max, max//10)
 
     def tcpClientAttached(self):
         print(self.tcpClient.peerAddress().toString()+": tcpClientAttached().")
@@ -429,6 +452,8 @@ class Commands(Enum):
     CMD_CALIBRATE = 15
     CMD_GET_LIVE_POS_AND_LIGHT = 16
     CMD_RESET = 17
+    CMD_SCHEDULER = 18
+    CMD_STOP = 19
 
 class States(Enum):
     IDLE = 0
